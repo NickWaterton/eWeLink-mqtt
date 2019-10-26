@@ -27,7 +27,7 @@ logging:
   
 log_in:
   phoneNumber: 
-  email: my-email.cloud@gmail.com
+  email: my-email@gmail.com
   password: my-password
   imei: '01234567-89AB-CDEF-0123-456789ABCDEF'
   
