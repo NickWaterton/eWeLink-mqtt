@@ -63,7 +63,7 @@ optional arguments:
   -V, --version         show program's version number and exit
   ```
 
-##Example
+## Example
 Example command line:
 ```
 ./ewelink_server.py -em my-email@gmail.com -P my-password -b 192.168.1.119 -l ./sonoff.log -D
@@ -74,10 +74,10 @@ Now wher you start `ewelink_server.py` with your account credentials, the device
 
 You can figure out which device id is which (I think its in the app, or you can use `get_config`.
 
-##Devices
+## Devices
 Most standard devices are supported (in the devices directory). if you have an unsupported device, the default for a switch is used.
 Most functions are supported, including timers etc.
 Feel free to add more functions/devices.
 
-##ToDo
+## ToDo
 Working on jinja2 templates, but may switch to yaml. Not currently implemented.
