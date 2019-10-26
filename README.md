@@ -1,7 +1,11 @@
 # eWeLink-mqtt
 Bridge to control Sonoff Devices via MQTT
 
+**Version 1.0**
+
 Full Readme to follow.
+
+**This uses stock firmware, no flashing required.**
 
 Command to run is `ewelink_server.py`
 
@@ -58,3 +62,22 @@ optional arguments:
   -D, --debug           debug mode
   -V, --version         show program's version number and exit
   ```
+
+##Example
+Example command line:
+```
+./ewelink_server.py -em my-email@gmail.com -P my-password -b 192.168.1.119 -l ./sonoff.log -D
+```
+You set up an account using the ewelink app. Add all your Sonoff devices to the ewelink account as the app described (this can be a PITA, as Sonoff devices can be hard to add).
+
+Now wher you start `ewelink_server.py` with your account credentials, the devices values will be published to your mqtt broker, and you can send commands via mqtt messages.
+
+You can figure out which device id is which (I think its in the app, or you can use `get_config`.
+
+##Devices
+Most standard devices are supported (in the devices directory). if you have an unsupported device, the default for a switch is used.
+Most functions are supported, including timers etc.
+Feel free to add more functions/devices.
+
+##ToDo
+Working on jinja2 templates, but may switch to yaml. Not currently implemented.
