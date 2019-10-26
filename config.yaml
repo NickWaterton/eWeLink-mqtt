@@ -1,0 +1,619 @@
+#==========================================================================
+#
+# Sonoff <-> MQTT bridge configuration file.
+#
+# NOTE: the loader supports using a !include tag to load other as a
+# item entry so you can do things like this:
+#
+# sonoff:
+#    devices: !include devices.yaml
+#
+#==========================================================================
+
+#==========================================================================
+#
+# Optional logging configuration (can also be set via the command line)
+#
+#==========================================================================
+logging:
+  # 10=DEBUG, 20=INFO, 30=WARNING, 40=ERROR
+  level: 10
+
+  # Print messages to the screen.
+  #screen: False
+
+  # Print messages to a file.
+  #file: /var/log/sonoff_mqtt.log
+  
+log_in:
+  phoneNumber: 
+  email: waterton.cloud@gmail.com
+  password: Waterrat10a
+  imei: '01234567-89AB-CDEF-0123-456789ABCDEF'
+  
+
+#==========================================================================
+#
+# MQTT configuration
+#
+#==========================================================================
+mqtt:
+  broker: 127.0.0.1
+  port: 1883
+  # Optional broker login data.
+  #username:
+  #password:
+
+  # Keep alive time in seconds.  This should be smaller than the
+  # server setting (which is usually ~60 seconds) to insure that
+  # connections aren't dropped.
+  keep_alive: 30
+
+  # Outbound messages configuration.  Retain should generally be 1
+  # so that the current state is available when someone subscribes.
+  qos: 1
+  retain: 0
+
+  # Input commands topic to allow changes to a device.  See the device
+  # documentation for details.  NOTE: This is usually not needed for
+  # home automation - it's used by the command line tool to modify the
+  # Sonoff devices, network, and scenes.  The deviceid or name of the
+  # device will follow the command topic (ewelink/command/deviceid) to
+  # send these low level commands.
+  cmd_topic: 'ewelink/command'
+
+  #------------------------------------------------------------------------
+  # On/off switches
+  #------------------------------------------------------------------------
+
+  # On/Off switch.  Non-dimming lamp modules and wall switches.
+  # In Home Assistant use MQTT switch with a configuration like:
+  #   switch:
+  #     - platform: mqtt
+  #       state_topic: 'ewelink/100038414f/state'
+  #       command_topic: 'ewelink/100038414f/set'
+  switch:
+    # Output state change topic and template.  This message is sent
+    # whenever the device state changes for any reason.  Available
+    # variables for templating are:
+    #   deviceid = '100038414f'
+    #   name = 'device name'
+    #   param = 'parameter'
+    #   on = 0/1
+    #   on_str = 'off', 'on'
+    #   value = 'raw value'
+    state_topic: 'ewelink_status/{{deviceid}}/{{param}}'
+    state_payload: '{{value}}'
+    
+    #json example:
+    #state_topic: 'ewelink/{{deviceid}}/status'
+    #state_payload: '{ "param" : {{param | tojson}}, "value" : {{value | tojson}} }'
+
+    # Input on/off command.  Similar functionality to the cmd_topic
+    # but only for turning the device on and off.  The output of
+    # passing the payload through the template must match the following:
+    #   { "cmd" : 'on'/'off' }
+    # Available variables for templating are:
+    #   value = the input payload
+    #   json = the input payload converted to json.  Use json.VAR to extract
+    #          a variable from a json payload.
+    on_off_topic: 'ewelink/{{deviceid}}/set'
+    on_off_payload: '{ "cmd" : "{{value.lower()}}" }'
+
+    # Scene on/off command.  This triggers the scene broadcast on the switch
+    # in the same way clicking the button would.  The inputs are the same as
+    # those for the on_off topic and payload.
+    scene_topic: 'ewelink/{{deviceid}}/scene'
+    scene_payload: '{ "cmd" : "{{value.lower()}}" }'
+
+  #------------------------------------------------------------------------
+  # Dimmers
+  #------------------------------------------------------------------------
+
+  # Dimmer switch.  Dimming lamp modules and wall switches.  In Home
+  # Assistant use MQTT light with a configuration like the following -
+  # this gets HA to send the brightness value as the payload for all
+  # control of the light.
+  #   light:
+  #     - platform: mqtt_json
+  #       name: "ewelink 1"
+  #       state_topic: "ewelink/48.b0.ad/state"
+  #       command_topic: "ewelink/48.b0.ad/level"
+  #       brightness: true
+  #
+  dimmer:
+    # Output state change topic and payload.  This message is sent
+    # whenever the device state changes for any reason.  Available
+    # variables for templating are:
+    #   deviceid = '100038414f'
+    #   name = 'device name'
+    #   on = 0/1
+    #   on_str = 'off', 'on'
+    #   level_255 = 0-255
+    #   level_100 = 0-100
+    state_topic: 'ewelink/{{deviceid}}/state'
+    state_payload: >
+       { "state" : "{{on_str.upper()}}", "brightness" : {{level_255}} }
+
+    # Input on/off command.  Similar functionality to the cmd_topic
+    # but only for turning the device on and off.  The output of
+    # passing the payload through the template must match the following:
+    #   { "cmd" : "on"/"off", ["instant" : 0/1] }
+    # Available variables for templating are:
+    #   deviceid = '100038414f'
+    #   name = 'device name'
+    #   value = the input payload
+    #   json = the input payload converted to json.  Use json.VAR to extract
+    #          a variable from a json payload.
+    # NOTE: this isn't used by the HA example above - it's only useful when
+    # treating the dimmer as an on/off switch and sending ON/OFF payloads
+    on_off_topic: 'ewelink/{{deviceid}}/set'
+    on_off_payload: '{ "cmd" : "{{value.lower()}}" }'
+
+    # Input dimming on/off command.  Similar functionality to the cmd_topic
+    # but only for turning the device on and off and setting the
+    # level.  The output of passing the payload through the template
+    # must match the following:
+    #   { "cmd" : "on"/"off", "level" : LEVEL, ["instant" : 0/1] }
+    # where:
+    #   LEVEL = 0->255 dimmer level
+    # Available variables for templating are:
+    #   deviceid = '100038414f'
+    #   name = 'device name'
+    #   value = the input payload
+    #   json = the input payload converted to json.  Use json.VAR to extract
+    #          a variable from a json payload.
+    level_topic: 'ewelink/{{deviceid}}/level'
+    # NOTE: HASS JSON switch doesn't send brightness in some cases
+    # when actuated so handle that here in the template code.  The
+    # other HASS MQTT options also have this problem.
+    level_payload: >
+       { "cmd" : "{{json.state.lower()}}",
+         "level" : {% if json.brightness is defined %}
+                      {{json.brightness}}
+                   {% else %}
+                      255
+                   {% endif %} }
+
+    # Scene on/off command.  This triggers the scene broadcast on the switch
+    # in the same way clicking the button would.  The inputs are the same as
+    # those for the on_off topic and payload.
+    scene_topic: 'ewelink/{{deviceid}}/scene'
+    scene_payload: '{ "cmd" : "{{value.lower()}}" }'
+
+  #------------------------------------------------------------------------
+  # Battery powered sensors
+  #    door sensors, hidden door sensors, window sensors
+  #------------------------------------------------------------------------
+
+  # In Home Assistant use MQTT binary sensor with a configuration like:
+  #   binary_sensor:
+  #     - platform: mqtt
+  #       state_topic: 'ewelink/100038414f/state'
+  #       device_class: 'motion'
+  #
+  #     - platform: mqtt
+  #       state_topic: 'ewelink/100038414f/low_battery'
+  #       device_class: 'battery'
+  battery_sensor:
+    # Output state change topic and payload.  This message is sent
+    # whenever the device state changes for any reason.  Available
+    # variables for templating are:
+    #   deviceid = '100038414f'
+    #   name = 'device name'
+    #   on = 0/1
+    #   on_str = 'off', 'on'
+    state_topic: 'ewelink/{{deviceid}}/state'
+    state_payload: '{{on_str.upper()}}'
+
+    # Output low battery topic and payload.  This message is sent
+    # whenever the device detects a low battery. Available variables
+    # for templating are:
+    #   deviceid = '100038414f'
+    #   name = 'device name'
+    #   is_low = 0/1
+    #   is_low_str = 'off', 'on'
+    low_battery_topic: 'ewelink/{{deviceid}}/battery'
+    low_battery_payload: '{{is_low_str.upper()}}'
+
+  #------------------------------------------------------------------------
+  # Motion sensors
+  #------------------------------------------------------------------------
+
+  # Motion sensors will use the state and low battery configuration
+  # inputs from battery_sensor and some sensors add an addition
+  # dawn/dusk notification which is configured here.
+  #
+  # In Home Assistant use MQTT binary sensor with a configuration like:
+  #   binary_sensor:
+  #     - platform: mqtt
+  #       state_topic: 'ewelink/100038414f/dawn'
+  #       device_class: 'light'
+  motion:
+    # Output dawn/dusk change topic and payload.  This message is sent
+    # whenever the device light sensor detects dawn or dusk changes.
+    # Available variables for templating are:
+    #   deviceid = '100038414f'
+    #   name = 'device name'
+    #   is_dawn = 0/1
+    #   is_dawn_str = 'off', 'on'
+    #   is_dusk = 0/1
+    #   is_dusk_str = 'off', 'on'
+    #   state = 'dawn', 'dusk'
+    dawn_dusk_topic: 'ewelink/{{deviceid}}/dawn'
+    dawn_dusk_payload: '{{is_dawn_str.upper()}}'
+
+  #------------------------------------------------------------------------
+  # Leak sensors
+  #------------------------------------------------------------------------
+
+  # Leak sensors will report the dry/wet status and a heartbeat every 24
+  # hours. The leak sensors does not support low battery signal like other
+  # battery operated devices.
+  #
+  # In Home Assistant use a combination of MQTT binary sensor and template
+  # sensor with a configuration like:
+  #   binary_sensor:
+  #     - platform: mqtt
+  #       state_topic: 'ewelink/100038414f/wet'
+  #       device_class: 'moisture'
+  #
+  #   sensors:
+  #     - platform: mqtt
+  #       state_topic: 'ewelink/100038414f/heartbeat'
+  leak:
+    # Output wet/dry change topic and payload.  This message is sent
+    # whenever the device changes state to wet or dry.
+    # Available variables for templating are:
+    #   deviceid = '100038414f'
+    #   name = 'device name'
+    #   is_wet = 0/1
+    #   is_wet_str = 'off', 'on'
+    #   is_dry = 0/1
+    #   is_dry_str = 'off', 'on'
+    #   state = 'wet', 'dry'
+    wet_dry_topic: 'ewelink/{{deviceid}}/wet'
+    wet_dry_payload: '{{is_wet_str.upper()}}'
+
+    # Output heartbeat topic and payload.  This message is sent
+    # every 24 hours. Available variables for templating are:
+    #   deviceid = '100038414f'
+    #   name = 'device name'
+    #   heartbeat_str = date and time of the last heartbeat
+    heartbeat_topic: 'ewelink/{{deviceid}}/heartbeat'
+    heartbeat_payload: '{{heartbeat_str}}'
+
+  #------------------------------------------------------------------------
+  # Smoke Bridge
+  #------------------------------------------------------------------------
+
+  # The smoke bridge will broadcast on a variety of groups for various error
+  # conditions.
+  #
+  # In Home Assistant use MQTT binary sensor with a configuration like:
+  #   binary_sensor:
+  #     - platform: mqtt
+  #       state_topic: 'ewelink/100038414f/smoke'
+  #       device_class: 'smoke'
+  #
+  #     - platform: mqtt
+  #       state_topic: 'ewelink/100038414f/battery'
+  #       device_class: 'battery'
+  #
+  #     - platform: mqtt
+  #       state_topic: 'ewelink/100038414f/co'
+  #       device_class: 'gas'
+  #
+  #     - platform: mqtt
+  #       state_topic: 'ewelink/100038414f/error'
+  smoke_bridge:
+    # Output state change topic and payload.  This message is sent
+    # whenever the device state changes for any reason.  Available
+    # variables for templating are:
+    #   deviceid = '100038414f'
+    #   name = 'device name'
+    #   on = 0/1
+    #   on_str = 'off', 'on'
+    smoke_topic: 'ewelink/{{deviceid}}/smoke'
+    smoke_payload: '{{on_str.upper()}}'
+
+    co_topic: 'ewelink/{{deviceid}}/co'
+    co_payload: '{{on_str.upper()}}'
+
+    battery_topic: 'ewelink/{{deviceid}}/battery'
+    battery_payload: '{{on_str.upper()}}'
+
+    error_topic: 'ewelink/{{deviceid}}/error'
+    error_payload: '{{on_str.upper()}}'
+
+  #------------------------------------------------------------------------
+  # Mini remotes
+  #------------------------------------------------------------------------
+
+  # Battery powered remotes (usually 4 or 8 buttons).  A message is
+  # sent whenever one of the buttons is pressed.
+  remote:
+    # Output state change topic and template.  This message is sent
+    # whenever a button is pressed.  Available variables for templating are:
+    #   deviceid = '100038414f'
+    #   name = 'device name'
+    #   button = 1...n  (button number 1-4 or 1-8)
+    #   on = 0/1
+    #   on_str = 'off', 'on'
+    state_topic: 'ewelink/{{deviceid}}/state/{{button}}'
+    state_payload: '{{on_str.upper()}}'
+
+  #------------------------------------------------------------------------
+  # Fan Linc
+  #------------------------------------------------------------------------
+
+  # A FanLinc is a dimmer switch (ewelink group 1) plus a fan control
+  # (group 2).  The dimmer MQTT messages use the dimmer settings
+  # above.  The settings here are just for the fan input and output.
+  # The settings can be used to turn the fan on and off (and report
+  # on/off state changes).
+  #
+  # NOTE: Both the fan state and fan speed state topics will be
+  # published on ANY fan change.  So if you only need one of them, you
+  # can put both payloads in a single message and set the other inputs
+  # to blank (which will turn off the output).
+  #
+  # In Home Assistant, use the dimmer example above for the light and
+  # use MQTT fan with a configuration like this for the fan:
+  # fan:
+  #   - platform: mqtt
+  #     command_topic: 'ewelink/100038414f/fan/set'
+  #     state_topic: 'ewelink/100038414f/fan/state'
+  #     speed_command_topic: 'ewelink/100038414f/fan/speed/set'
+  #     speed_state_topic: 'ewelink/100038414f/fan/state'
+  fan_linc:
+    # Output fan state change topic and payload.  This message is sent
+    # whenever the fan state changes for any reason.  Available
+    # variables for templating are:
+    #   deviceid = '100038414f'
+    #   name = 'device name'
+    #   on = 0/1
+    #   on_str = 'off', 'on'
+    #   level = 0, 1, 2, 3
+    #   level_str = 'off', 'low', 'medium', 'high'
+    fan_state_topic: 'ewelink/{{deviceid}}/fan/state'
+    fan_state_payload: '{{on_str.upper()}}'
+
+    # Fan on/off command.  Similar functionality to the cmd_topic
+    # but only for turning the device on and off.  The output of
+    # passing the payload through the template must match the following:
+    #   { "cmd" : "on"/"off" }
+    # Available variables for templating are:
+    #   deviceid = '100038414f'
+    #   name = 'device name'
+    #   value = the input payload
+    #   json = the input payload converted to json.  Use json.VAR to extract
+    #          a variable from a json payload.
+    fan_on_off_topic: 'ewelink/{{deviceid}}/fan/set'
+    fan_on_off_payload: '{ "cmd" : "{{value.lower()}}" }'
+
+    # Output fan speed state change topic and payload.  Set to empty
+    # to turn off.  The same templating variables are available as
+    # fan_state_topic agove.
+    fan_speed_topic: 'ewelink/{{deviceid}}/fan/speed/state'
+    fan_speed_payload: '{{level_str}}'
+
+    # Fan speed change command.  Similar functionality to the cmd_topic
+    # but only for turning the device on and off.  The output of
+    # passing the payload through the template must match the following:
+    #   { "cmd" : SPEED }
+    # where
+    #   SPEED = 0, 1, 2, 3 (for off, low, medium, high)
+    #      or = "off", "low", "medium", "high"
+    # Available variables for templating are:
+    #   deviceid = '100038414f'
+    #   name = 'device name'
+    #   value = the input payload
+    #   json = the input payload converted to json.  Use json.VAR to extract
+    #          a variable from a json payload.
+    fan_speed_set_topic: 'ewelink/{{deviceid}}/fan/speed/set'
+    fan_speed_set_payload: '{ "cmd" : "{{value.lower}}" }'
+
+  #------------------------------------------------------------------------
+  # Keypad Linc
+  #------------------------------------------------------------------------
+
+  # A KeypadLinc is an on/off or dimmer switch (ewelink group 1) plus a
+  # series of scene control buttons which operate on other groups.  The group
+  # 1 behavior will depend on whether the device is an on/off or dimmer.  The
+  # 4 or 6 other buttons are controlled like switches - but the only affect
+  # is turning on and off the LED on the button since they have no directly
+  # attached load.
+  #
+  # 6 button and 8 button keypads have use the following button numbers:
+  #    1 on           1       2
+  #  3       4        3       4
+  #  5       6        5       6
+  #    1 off          7       8
+  #
+  # In Home Assistant, use MQTT switches to represent the on/off switches and
+  # the MQTT json component for a dimmer.  The non-group 1 buttons are switches.
+  #   # dimmers:
+  #   light:
+  #     - platform: mqtt_json
+  #       state_topic: "ewelink/100038414f/state/1"
+  #       command_topic: "ewelink/100038414f/set/1"
+  #       brightness: true
+  #
+  #   # switches:
+  #   switch:
+  #     - platform: mqtt
+  #       state_topic: 'ewelink/100038414f/state/1'
+  #       command_topic: 'ewelink/100038414f/set/1'
+  #
+  #   # other buttons:
+  #   switch:
+  #     - platform: mqtt
+  #       state_topic: 'ewelink/100038414f/state/2'
+  #       command_topic: 'ewelink/100038414f/set/2'
+  keypad_linc:
+    # On/off switch state change topic and template.  This message is sent
+    # whenever one of the on/off buttons is pressed.  It will not be sent for
+    # button 1 if it's a dimmer.  Available variables for templating are:
+    #   deviceid = '100038414f'
+    #   name = 'device name'
+    #   button = 1-8
+    #   on = 0/1
+    #   on_str = 'off', 'on'
+    btn_state_topic: 'ewelink/{{deviceid}}/state/{{button}}'
+    btn_state_payload: '{{on_str.upper()}}'
+
+    # Dimmer output state change topic and payload for button 1.  This
+    # message is sent whenever the device dimmer state changes for any
+    # reason.  Available variables for templating are:
+    #   deviceid = '100038414f'
+    #   name = 'device name'
+    #   on = 0/1
+    #   on_str = 'off', 'on'
+    #   level_255 = 0-255
+    #   level_100 = 0-100
+    dimmer_state_topic: 'ewelink/{{deviceid}}/state/1'
+    dimmer_state_payload: >
+       { "state" : "{{on_str.upper()}}", "brightness" : {{level_255}} }
+
+    # Input on/off command.  For button 1, this will set the load.  For other
+    # buttons, it just set the button LED.  The output of passing the payload
+    # through the template must match the following:
+    #   { "cmd" : 'on'/'off', "button": button }
+    # Available variables for templating are:
+    #   value = the input payload
+    #   json = the input payload converted to json.  Use json.VAR to extract
+    #          a variable from a json payload.
+    btn_on_off_topic: 'ewelink/{{deviceid}}/set/{{button}}'
+    btn_on_off_payload: '{ "cmd" : "{{value.lower()}}" }'
+
+    # Input dimming on/off command for button 1.  Similar functionality to
+    # the cmd_topic but only for turning the group 1 on and off and setting
+    # the level.  This topic can be the same as the btn_on_off_topic in which
+    # case either command format is valid. The output of passing the payload
+    # through the template must match the following:
+    #   { "cmd" : "on"/"off", "level" : LEVEL, ["instant" : 0/1] }
+    # where:
+    #   LEVEL = 0->255 dimmer level
+    # Available variables for templating are:
+    #   deviceid = '100038414f'
+    #   name = 'device name'
+    #   value = the input payload
+    #   json = the input payload converted to json.  Use json.VAR to extract
+    #          a variable from a json payload.
+    dimmer_level_topic: 'ewelink/{{deviceid}}/set/1'
+    # NOTE: HASS JSON switch doesn't send brightness in some cases
+    # when actuated so handle that here in the template code.  The
+    # other HASS MQTT options also have this problem.
+    dimmer_level_payload: >
+       { "cmd" : "{{json.state.lower()}}",
+         "level" : {% if json.brightness is defined %}
+                      {{json.brightness}}
+                   {% else %}
+                      255
+                   {% endif %} }
+
+    # Scene on/off command.  This triggers the scene broadcast on the switch
+    # in the same way clicking the button would.  The inputs are the same as
+    # those for the btn_on_off topic and payload.
+    btn_scene_topic: 'ewelink/{{deviceid}}/scene/{{button}}'
+    btn_scene_payload: '{ "cmd" : "{{value.lower()}}" }'
+
+  #------------------------------------------------------------------------
+  # IO Linc relay controllers
+  #------------------------------------------------------------------------
+
+  # The IOLinc is both a switch (momentary or latching on/off) and a sensor
+  # that can be on or off.  If you configure the IOLinc to be momentary, then
+  # the on command will trigger it for the duration that is configured and
+  # the off command is ignored.  If it's configured as a latching switch,
+  # then the on and off commands work like a normal switch.  The set-flags
+  # command line command can be used to change the settings.
+  #
+  # NOTE: the on/off payload forces the relay to on or off so it's most
+  # likely NOT the way you want to use this.  The scene payload is the same
+  # trigger the IOLinc as a responder which respects the sensors settings in
+  # momentary-C mode and is most likely the way you do want to use this.
+  #
+  # In Home Assistant use MQTT switch with a configuration like:
+  #   switch:
+  #     - platform: mqtt
+  #       state_topic: 'ewelink/100038414f/state'
+  #       command_topic: 'ewelink/100038414f/scene'
+  io_linc:
+    # Output state change topic and template.  This message is sent whenever
+    # the device sensor state changes.  Available variables for templating
+    # are:
+    #   deviceid = '100038414f'
+    #   name = 'device name'
+    #   on = 0/1
+    #   on_str = 'off', 'on'
+    state_topic: 'ewelink/{{deviceid}}/state'
+    state_payload: '{{on_str.upper()}}'
+
+    # Input on/off command.  This forces the relay on/off and ignores the
+    # momentary-C sensor setting.  Use this to force the relay to respond.
+    # If momentary mode is active, it will turn off after the delay.  The
+    # output of passing the payload through the template must match the
+    # following:
+    #   { "cmd" : 'on'/'off' }
+    # Available variables for templating are:
+    #   value = the input payload
+    #   json = the input payload converted to json.  Use json.VAR to extract
+    #          a variable from a json payload.
+    on_off_topic: 'ewelink/{{deviceid}}/set'
+    on_off_payload: '{ "cmd" : "{{value.lower()}}" }'
+
+    # Scene on/off command.  This triggers the IOLinc as if it were a
+    # responder to a scene command and is the "correct" way to trigger the
+    # IOLinc relay in that it respects the momentary settings.  The inputs
+    # are the same as those for the on_off topic and payload.
+    scene_topic: 'ewelink/{{deviceid}}/scene'
+    scene_payload: '{ "cmd" : "{{value.lower()}}" }'
+
+  #------------------------------------------------------------------------
+  # On/off outlets
+  #------------------------------------------------------------------------
+
+  # On/Off outlets.  Non-dimming in wall outlet modules is two independent
+  # switchs (top and bottom outlet.  The top outlet is button 1, the bottom
+  # outlet is button 2.  In Home Assistant use MQTT switch with a
+  # configuration like:
+  #   switch:
+  #     - platform: mqtt
+  #       state_topic: 'ewelink/100038414f/state/1'
+  #       command_topic: 'ewelink/100038414f/set/1'
+  #   switch:
+  #     - platform: mqtt
+  #       state_topic: 'ewelink/100038414f/state/2'
+  #       command_topic: 'ewelink/100038414f/set/2'
+  outlet:
+    # Output state change topic and template.  This message is sent
+    # whenever the device state changes for any reason.  Available
+    # variables for templating are:
+    #   deviceid = '100038414f'
+    #   name = 'device name'
+    #   button = 1 (top outlet) or 2 (bottom outlet)
+    #   on = 0/1
+    #   on_str = 'off', 'on'
+    state_topic: 'ewelink/{{deviceid}}/state/{{button}}'
+    state_payload: '{{on_str.upper()}}'
+
+    # Input on/off command.  Similar functionality to the cmd_topic
+    # but only for turning the device on and off.  The output of
+    # passing the payload through the template must match the following:
+    #   { "cmd" : 'on'/'off', "button": button, ["instant" : 0/1] }
+    # Available variables for templating are:
+    #   value = the input payload
+    #   json = the input payload converted to json.  Use json.VAR to extract
+    #          a variable from a json payload.
+    on_off_topic: 'ewelink/{{deviceid}}/set/{{button}}'
+    on_off_payload: '{ "cmd" : "{{value.lower()}}" }'
+
+    # Scene on/off command.  This triggers the scene broadcast on the outlet
+    # in the same way clicking the button would.  The inputs are the same as
+    # those for the on_off topic and payload.
+    scene_topic: 'ewelink/{{deviceid}}/scene/{{button}}'
+    scene_payload: '{ "cmd" : "{{value.lower()}}" }'
+
+#----------------------------------------------------------------
