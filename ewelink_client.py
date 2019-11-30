@@ -115,6 +115,8 @@ import time
 import math
 import sys
 import random
+import uuid
+import string
 import hmac
 import hashlib
 import base64
@@ -128,7 +130,7 @@ import logging
 
 logger = logging.getLogger('Main.'+__name__)
 
-__version__ = '1.0'
+__version__ = '1.1'
 
 class EwelinkClient():
     """A websocket client for connecting to ITEAD's devices."""
@@ -169,6 +171,17 @@ class EwelinkClient():
         self._parameters = {}  #initial parameters for clients
         self._update_config = True 
         self._timeout = 0
+        self._version = '6'
+        self._os = 'iOS'
+        self._appid = 'oeVkj2lYFGnJu5XUtWisfW4utiN4u9Mq'
+        self._model         = 'iPhone' + random.choice(['6,1', '6,2', '7,1', '7,2', '8,1', '8,2', '8,4', '9,1', '9,2', '9,3', '9,4', '10,1', '10,2', '10,3', '10,4', '10,5', '10,6', '11,2', '11,4', '11,6', '11,8'])
+        self._romVersion    = random.choice([
+            '10.0', '10.0.2', '10.0.3', '10.1', '10.1.1', '10.2', '10.2.1', '10.3', '10.3.1', '10.3.2', '10.3.3', '10.3.4',
+            '11.0', '11.0.1', '11.0.2', '11.0.3', '11.1', '11.1.1', '11.1.2', '11.2', '11.2.1', '11.2.2', '11.2.3', '11.2.4', '11.2.5', '11.2.6', '11.3', '11.3.1', '11.4', '11.4.1',
+            '12.0', '12.0.1', '12.1', '12.1.1', '12.1.2', '12.1.3', '12.1.4', '12.2', '12.3', '12.3.1', '12.3.2', '12.4', '12.4.1', '12.4.2',
+            '13.0', '13.1', '13.1.1', '13.1.2', '13.2'
+        ])
+        self._appVersion    = random.choice(['3.5.3', '3.5.4', '3.5.6', '3.5.8', '3.5.10', '3.5.12', '3.6.0', '3.6.1', '3.7.0', '3.8.0', '3.9.0', '3.9.1', '3.10.0', '3.11.0', '3.12.0'])
         
         #client initialization parameters
         self._configuration = {}
@@ -207,6 +220,8 @@ class EwelinkClient():
             self.loop = loop
             
     def get_initialization_parameters(self, file, phoneNumber, email, password, imei, pub_topic):
+        if imei is None:
+            imei = str(uuid.uuid4())
         if file:
             if self.load_config(file):
                 my_phoneNumber = self._configuration['log_in'].get('phoneNumber', phoneNumber)
@@ -288,15 +303,15 @@ class EwelinkClient():
             data['email'] = self._email
             
         data['password'] = self._password
-        data['version'] = '6'
+        data['version'] = self._version
         data['ts'] = self.timestamp
         data['_nonce'] = self._nonce
-        data['appid'] = 'oeVkj2lYFGnJu5XUtWisfW4utiN4u9Mq'
+        data['appid'] = self._appid
         data['imei'] = self._imei
-        data['os'] = 'iOS'
-        data['model'] = 'iPhone10,6'
-        data['romVersion'] = '11.1.2'
-        data['appVersion'] = '3.5.3'
+        data['os'] = self._os
+        data['model'] = self._model
+        data['romVersion'] = self._romVersion
+        data['appVersion'] = self._appVersion
         
         json_data = json.dumps(data)
         self.logger.debug('Sending login request with user credentials: %s' % json_data)
@@ -371,15 +386,15 @@ class EwelinkClient():
     async def _getWebSocketHost(self):
         data = {}
         data['accept'] = 'mqtt,ws'
-        data['version'] = '6'
+        data['version'] = self._version
         data['ts'] = self.timestamp
         data['_nonce'] = self._nonce
-        data['appid'] = 'oeVkj2lYFGnJu5XUtWisfW4utiN4u9Mq'
+        data['appid'] = self._appid
         data['imei'] = self._imei
-        data['os'] = 'iOS'
-        data['model'] = 'iPhone10,6'
-        data['romVersion'] = '11.1.2'
-        data['appVersion'] = '3.5.3'
+        data['os'] = self._os
+        data['model'] = self._model
+        data['romVersion'] = self._romVersion
+        data['appVersion'] = self._appVersion
         
         json_data = json.dumps(data)
         self.logger.debug('sending get websocket host data: %s' % json_data)
@@ -467,9 +482,24 @@ class EwelinkClient():
     async def get_device_list(self):
         """Retrieve the device information. returns a list of devices (may be just 1)"""
         self.logger.debug("Retrieving device list information.")
-        url = 'https://{}/api/user/device'.format(self.apiHost)
+        #url = 'https://{}/api/user/device'.format(self.apiHost)    #suddenly stopped worrking, so use
+        '''
+        #full version
+        url = 'https://{}/api/user/device?lang=en&apiKey={}&getTags=1&version={}&ts={}&nonce={}&appid={}&imei={}&os={}&model={}&romVersion={}&appVersion={}'.format(self.apiHost,
+                                                                                                                                                                    self.apikey,
+                                                                                                                                                                    self.timestamp,
+                                                                                                                                                                    self._version,
+                                                                                                                                                                    self._nonce,
+                                                                                                                                                                    self._appid,
+                                                                                                                                                                    self._imei,
+                                                                                                                                                                    self._os,
+                                                                                                                                                                    self._model,
+                                                                                                                                                                    self._romVersion,
+                                                                                                                                                                    self._appVersion)
+        '''
+        url = 'https://{}/api/user/device?version={}&appid={}'.format(self.apiHost, self._version, self._appid)
         headers = {
-            'Authorization': 'Bearer %s' % self.authenticationToken
+            'Authorization': 'Bearer %s' % self.authenticationToken,
         }
         self.logger.debug('url: %s, headers: %s' % (url, headers))
         async with ClientSession() as session:
@@ -481,8 +511,12 @@ class EwelinkClient():
             if response.status != 200:
                 self.logger.error('error: %s received' % response.status)
                 return
+                
+        if json_response.get("devicelist"):
+            self.logger.info('New response format found')
+            json_response = json_response["devicelist"]
         
-        self.logger.debug('number of device is: %d' % len(json_response))
+        self.logger.debug('number of device(s) is: %d' % len(json_response))
         
         self._devices = json_response   #list of devices and current configurations
         
@@ -561,6 +595,21 @@ class EwelinkClient():
             "uiid": 54
           }
         ]
+        
+        or New format:
+        {
+          "devicelist": [
+            {
+              "__v": 0,
+              "_id": "5c3665d012d28ae6ba4943c8",
+              "apikey": "530303a6-cf2c-4246-894c-50855b00e6d8",
+              "brandLogoUrl": "https://us-ota.coolkit.cc/logo/KRZ54OifuGmjoEMxT1YYM3Ybu2fj5K2C.png",
+              "brandName": "Sonoff",
+              "createdAt": "2019-01-09T21:21:20.402Z",
+              "devConfig": {},
+              "devGroups": [],
+              "deviceStatus": "",
+        ... as before
         '''
         
     def _create_client_devices(self):
