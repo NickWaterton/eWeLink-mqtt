@@ -15,9 +15,10 @@ Then simply use the secondary account with the server and keep your primary acco
 This applies to the Autoslide app as well if you use it.
 
 **Autoslide Patio Door Openers are Supported if you have the WiFi module**
+
 I wrote this bridge specifically to control my Autoslide patio Door opener, I just added all the other Sonoff stuff because it was easy.
 I do find that the Autoslide Controller goes off line from time to time, but you can still send it commands (like to trigger the door opening for "pet" or "auto" and changing modes),
-it's the feedback that seems to be the problem. power cycling the door controller fices it, but I'm hoping for an updataed firmware from Autoslide (or Itead) to fix it.
+it's the feedback that seems to be the problem. Power cycling the door controller fixes it, but I'm hoping for an updated firmware from Autoslide (or Itead) to fix it.
 Current F/W is 2.7 (with no updates for a year or so).
 
 **This uses Sonoff stock firmware, no flashing required.**
