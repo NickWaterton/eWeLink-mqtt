@@ -3,9 +3,24 @@ Bridge to control Sonoff Devices via MQTT
 
 **Version 1.0**
 
-Full Readme to follow.
+**NOTE:**
+The server only supports one eWeLink account where you can connect using your app email and password, or in place of the email you can use your 
+phone number accompanied by the country code. Each time an eWeLink is logged in an authentication token is generated and you can only have one token per user, 
+so after starting the server, you must keep your eWeLink account logged off. Otherwise, if you try to use eWeLink at the same time as the server with your paired devices, 
+both applications will be contending for a login session and neither will stay online.
 
-**This uses stock firmware, no flashing required.**
+Alternatively, you can create a secondary account on eWeLink and your primary account to share devices with this secondary account. 
+Then simply use the secondary account with the server and keep your primary account online with eWeLink without the risk of having the session expired because of the server running.
+
+This applies to the Autoslide app as well if you use it.
+
+**Autoslide Patio Door Openers are Supported if you have the WiFi module**
+I wrote this bridge specifically to control my Autoslide patio Door opener, I just added all the other Sonoff stuff because it was easy.
+I do find that the Autoslide Controller goes off line from time to time, but you can still send it commands (like to trigger the door opening for "pet" or "auto" and changing modes),
+it's the feedback that seems to be the problem. power cycling the door controller fices it, but I'm hoping for an updataed firmware from Autoslide (or Itead) to fix it.
+Current F/W is 2.7 (with no updates for a year or so).
+
+**This uses Sonoff stock firmware, no flashing required.**
 
 Command to run is `ewelink_server.py`
 
@@ -70,9 +85,9 @@ Example command line:
 ```
 You set up an account using the ewelink app. Add all your Sonoff devices to the ewelink account as the app described (this can be a PITA, as Sonoff devices can be hard to add).
 
-Now wher you start `ewelink_server.py` with your account credentials, the devices values will be published to your mqtt broker, and you can send commands via mqtt messages.
+Now when you start `ewelink_server.py` with your account credentials, the devices values will be published to your mqtt broker, and you can send commands via mqtt messages.
 
-You can figure out which device id is which (I think its in the app, or you can use `get_config`.
+You can figure out which device id is which (it's in the ewelink app, or you can use `get_config`.
 
 ## Devices
 Most standard devices are supported (in the devices directory). if you have an unsupported device, the default for a switch is used.
