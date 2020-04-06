@@ -1,11 +1,21 @@
 # eWeLink-mqtt
-Bridge to control Sonoff Devices via MQTT
+Server Bridge to control Sonoff Devices via MQTT
 
 **Version 1.0**
 
+## Limitations
+This is a python 3.6 program and uses asyncio. you will need several libraries installed including
+* asyncio
+* paho-mqtt
+* websockets
+* aiohttp
+* yaml  __note: yaml is not actually used, but some experimental code is in there....__
+
+I have only verified that e-mail logins works, and can only test the North America region.
+
 **NOTE:**
 The server only supports one eWeLink account where you can connect using your app email and password, or in place of the email you can use your 
-phone number accompanied by the country code. Each time an eWeLink is logged in an authentication token is generated and you can only have one token per user, 
+phone number and password (but **I have not tried phone number logins, or regions other that North America**). Each time an eWeLink is logged in an authentication token is generated and you can only have one token per user, 
 so after starting the server, you must keep your eWeLink account logged off. Otherwise, if you try to use eWeLink at the same time as the server with your paired devices, 
 both applications will be contending for a login session and neither will stay online.
 
