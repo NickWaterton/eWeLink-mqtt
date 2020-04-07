@@ -102,15 +102,18 @@ optional arguments:
   ```
 
 ## Example
-Example command line:
+Example command lines:
 ```
 ./ewelink_server.py -em my-email@gmail.com -P my-password -b 192.168.1.119 -l ./sonoff.log -D
+./ewelink_server.py -em my-email@gmail.com -P my-password get_config
 ```
 You set up an account using the ewelink app. Add all your Sonoff devices to the ewelink account as the app described (this can be a PITA, as Sonoff devices can be hard to add).
 
-Now when you start `ewelink_server.py` with your account credentials, the devices values will be published to your mqtt broker, and you can send commands via mqtt messages.
+Now when you start `ewelink_server.py` with your account credentials and mqtt broker address, the devices values will be published to your mqtt broker, and you can send commands via mqtt messages.
 
 You can figure out which device id is which (it's in the ewelink app, or you can use `get_config`.
+
+If no broker address is given then a command is expected to be given (like `get_config`) - you have to supply one of these two options. See the examples above.
 
 ## Devices
 Many standard devices are supported (built in). if you have an unsupported device, the default for a Basic switch is used.
