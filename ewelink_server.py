@@ -26,7 +26,7 @@ import asyncio
 import ewelink_client
 
 __version__ = __VERSION__ = "1.0.0"
-        
+
 def pprint(obj):
     """Pretty JSON dump of an object."""
     return json.dumps(obj, sort_keys=True, indent=2, separators=(',', ': '))
@@ -47,17 +47,17 @@ def get_config(client, arg):
             print('%s' % pprint(device))
         else:
             print('deviceid %s Not Found' % arg.device)
-    
+
 def door_trigger(client, arg):
     if arg.device == 'default':
         arg.device = '0'
     client.send_command(arg.device, 'door_trigger', arg.trigger)
-    
+
 def set_mode(client, arg):
     if arg.device == 'default':
         arg.device = '0'
     client.send_command(arg.device, 'set_mode', arg.mode)
-    
+
 def set_option(client, arg):
     if not arg.value.isdigit():
         log.error('option value: %s must be a number' % arg.value)
@@ -65,18 +65,18 @@ def set_option(client, arg):
     if arg.device == 'default':
         arg.device = '0'
     client.send_command(arg.device, 'set_option', ' '.join([arg.option, arg.value]))
-    
+
 def send_command(client, arg):
     if arg.device == 'default':
         arg.device = '0'
     client.send_command(arg.device, arg.command, arg.message)
-    
+
 def sigterm_handler(signal, frame):
     log.info('Received SIGTERM signal')
     sys.exit(0)
 
 def setup_logger(logger_name, log_file, level=logging.DEBUG, console=False):
-    try: 
+    try:
         l = logging.getLogger(logger_name)
         formatter = logging.Formatter('[%(levelname)1.1s %(asctime)s] (%(name)-20s) %(message)s')
         if log_file is not None:
@@ -92,11 +92,11 @@ def setup_logger(logger_name, log_file, level=logging.DEBUG, console=False):
             l.addHandler(fileHandler)
         if console == True:
           l.addHandler(streamHandler)
-             
+
     except Exception as e:
         print("Error in Logging setup: %s - do you have permission to write the log file??" % e)
         sys.exit(1)
-      
+
 def on_connect(mosq, userdata, flags, rc):
     #log.info("rc: %s" % str(rc))
     log.info("Connected to MQTT Server")
@@ -149,7 +149,7 @@ def main():
     parser.add_argument('-l','--log', action="store",default="None", help='log file. (default: %(default)s)')
     parser.add_argument('-D','--debug', action='store_true', help='debug mode', default = False)
     parser.add_argument('-V','--version', action='version',version='%(prog)s {version}'.format(version=__VERSION__))
-    
+
 
     subparsers = parser.add_subparsers(dest='command')
 
@@ -163,37 +163,37 @@ def main():
     set_mode_parser = subparsers.add_parser('set_mode', help='Set Door mode')
     set_mode_parser.add_argument('mode', help='mode to set, 0=Auto, 1=Stacker,2=Locked, 3=Pet')
     set_mode_parser.set_defaults(func=set_mode)
-    
+
     set_option_parser = subparsers.add_parser('set_option', help='Set Door Options, enter: option value')
     set_option_parser.add_argument('option', choices=['mode', '75%_power', 'slam_shut', 'heavy_door', 'stacker_mode','door_delay', 'notifications'], help='option to change')
     set_option_parser.add_argument('value', help='value (must be a number, 0=ON, 1=OFF, delay is in seconds)')
     set_option_parser.set_defaults(func=set_option)
-    
+
     send_command_parser = subparsers.add_parser('send_command', help='Send any valid command, enter: command value')
     send_command_parser.add_argument('command', help='command to send (eg switch)')
     send_command_parser.add_argument('message', help='value (such as on or off)')
     send_command_parser.set_defaults(func=send_command)
 
     arg = parser.parse_args()
-    
+
     if arg.debug:
       log_level = logging.DEBUG
     else:
       log_level = logging.INFO
-    
+
     #setup logging
     if arg.log == 'None':
         log_file = None
     else:
         log_file=os.path.expanduser(arg.log)
     setup_logger('Main',log_file,level=log_level,console=True)
-    
+
     log = logging.getLogger('Main')
-    
+
     log.debug('Debug mode')
-    
+
     log.info("Python Version: %s" % sys.version.replace('\n',''))
-    
+
     #register signal handler
     signal.signal(signal.SIGTERM, sigterm_handler)
 
@@ -201,16 +201,16 @@ def main():
     port = arg.port
     user = arg.user
     password = arg.password
-    
+
     if not HAVE_MQTT:
         broker = None
-    
+
     global sub_topic
     sub_topic = arg.sub_topic
     mqttc = None
     loop = None
     server = False
-    
+
     if not arg.command and not broker:
         log.critical('You must define an MQTT broker, or give a command line argument')
         parser.print_help()
@@ -227,17 +227,17 @@ def main():
                 mqttc.username_pw_set(username=user,password=password)
             mqttc.connect(broker, port, 120)
             mqttc.loop_start()
-            
+
             loop = asyncio.get_event_loop()
             if arg.debug:
                 loop.set_debug(True)
             log.info("Server Started")
             server = True
-            
+
         client = ewelink_client.EwelinkClient(arg.phone, arg.email, arg.e_password, arg.imei, loop, mqttc, arg.pub_topic, arg.config)
-        
+
         client.set_initial_parameters(arg.device, delay_person=arg.delay_person)
-        
+
         if not loop:
             while not client.connected:
                 time.sleep(0.1)
@@ -250,20 +250,20 @@ def main():
                 loop.run_until_complete(client.login())
                 log.warn("Client Disconnected")
                 time.sleep(60)  #retry every 60 seconds
-        
+
     except (KeyboardInterrupt, SystemExit):
         log.info("System exit Received - Exiting program")
         if loop:
             loop.run_until_complete(client._disconnect())
         else:
             client.disconnect()
-            
+
     except Exception as e:
         if log_level == logging.DEBUG:
             log.exception("Error: %s" % e)
         else:
             log.error("Error: %s" % e)
-        
+
     finally:
         if mqttc:
             mqttc.loop_stop()
@@ -271,7 +271,6 @@ def main():
         if loop:
             loop.close()
         log.debug("Program Exited")
-      
 
 if __name__ == "__main__":
     main()
