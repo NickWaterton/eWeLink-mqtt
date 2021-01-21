@@ -1,6 +1,7 @@
 {
 	"version": "0.2.0",
 	"configurations": [
+
 		{
 			"name": "Python: Current File",
 			"type": "python",
@@ -10,9 +11,11 @@
 			"args": ["-em","call2me@free.fr",
 					 "-P","Dj@ng059",
 					 "-b","192.168.0.210",
-					 "-p", "1884",
-					 "-l", "./sonoff.log",
-					 "-D", "get_config"
+					 "-p","1884",
+					 "-l","./sonoff.log",
+					 "-ar","eu",
+					 "-D",
+					 "get_config"
 					]
 		}
 	]
