@@ -353,7 +353,7 @@ class EwelinkClient():
                     #return
             elif response.status == 200:
                 if json_response.get('error',None):
-                    self.logger.error('login error: %d, :%s' %(json_response['error'], json_response['info']))
+                    self.logger.error('login error: %d, :%s' %(json_response['error'], json_response.get('info')))
                     return
             '''
             Example good Response:
