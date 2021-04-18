@@ -24,13 +24,13 @@ logging:
 
   # Print messages to a file.
   #file: /var/log/sonoff_mqtt.log
-  
+
 log_in:
-  phoneNumber: 
-  email: my-email@gmail.com
-  password: my-password
-  imei: '01234567-89AB-CDEF-0123-456789ABCDEF'
-  
+  phoneNumber:+33651747315
+  email: call2me@free.fr
+  password: Djx
+  imei: '01234567-89AB-BEEF-0123-456789ABCDEF'
+
 
 #==========================================================================
 #
@@ -38,8 +38,8 @@ log_in:
 #
 #==========================================================================
 mqtt:
-  broker: 127.0.0.1
-  port: 1883
+  broker: picollo.duckdns.org
+  port: 1884
   # Optional broker login data.
   #username:
   #password:
@@ -84,7 +84,7 @@ mqtt:
     #   value = 'raw value'
     state_topic: 'ewelink_status/{{deviceid}}/{{param}}'
     state_payload: '{{value}}'
-    
+
     #json example:
     #state_topic: 'ewelink/{{deviceid}}/status'
     #state_payload: '{ "param" : {{param | tojson}}, "value" : {{value | tojson}} }'
