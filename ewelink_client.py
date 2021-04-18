@@ -3,6 +3,7 @@
 
 '''
 N Waterton 11th Jan 2019 V1.0 First release
+N. Waterton 18th April 20201 V 1.2 Updated login method.
 '''
 
 '''
@@ -23,16 +24,16 @@ eWelink app in "legacy" mode to get it to connect), you should be able to regist
 
 Once you have control using the app, you can now use this client for connecting and controlling your
 device via MQTT, or command line/API.
-
+ 
 Now you are registered, you should have your e-mail address (or phone number) and a password for your Autoslide/eWelink account.
 When you instantiate the client, you need to pass the e-mail address (or phone number) and password to the client constructor.
 eg:
 client = ewelink_client.EwelinkClient(email, password)
 or
 client = ewelink_client.EwelinkClient(phone, password)
-
+ 
 This is the minimum needed to connect the client.
-
+ 
 iTEAD eWelink uses cloud servers to authenticate your login, and issue an authorization token, the authorization token is
 re-issued every time you log in. We then take the authorization token, and use this to open a websocked client to iTEADs servers.
 This websocket interface is the connection to the Autoslide device. This is an indirect connection - ie we send to iTEAD's servers
@@ -63,14 +64,14 @@ client.set_option(option, value, device=0)
 If you do supply an asyncio loop, you will need to start the loop, with the client.login() - like this:
 loop.run_until_complete(client.login())
 
-see ewelink_server.py for a full working example.
-
+see ewelink_server.py for a full working example.  
+      
 The actual configuration of all this is gleaned from web sources on the IoTgo protocol, and reverse engineering the data.
 I have no engineering documents to go on, so some of the parameters are a best guess as to what they do.
 
 Please update me if you have better information, or find out what unknown parameters are/do.
 
-The actual devices themselves are defined in ewelink_devices.py, with one class per device type. The correct class will be instantiated for a
+The actual devices themselves are defined in ewelink_devices.py, with one class per device type. The correct class will be instantiated for a 
 device based on the 'productModel' returned by the servers (and defined in the class). If no productModel/class match is found, a Default class
 is used for the device that gives basic control.
 
@@ -103,7 +104,7 @@ Device initialization parameters can be set using client.set_initial_parameters(
 and are passed to the device client on creation, the client class decides what to do with the parameters.
 
 There are only a few devices defined in ewelink_devices.py (I only have a few to test), but feel free to add more, or update the existing ones.
-
+      
 Nick Waterton P.Eng.
 '''
 
@@ -130,13 +131,13 @@ import logging
 
 logger = logging.getLogger('Main.'+__name__)
 
-__version__ = '1.1'
+__version__ = '1.2'
 
 class EwelinkClient():
     """A websocket client for connecting to ITEAD's devices."""
-
-    __version__ = '1.0'
-
+    
+    __version__ = '1.2'
+    
     _ISOregex = r'^(-?(?:[1-9][0-9]*)?[0-9]{4})-(1[0-2]|0[1-9])-(3[01]|0[1-9]|[12][0-9])T(2[0-3]|[01][0-9]):([0-5][0-9]):([0-5][0-9])(\.[0-9]+)?(Z|[+-](?:2[0-3]|[01][0-9]):[0-5][0-9])?$'
     _cronregex = "{0}\s+{1}\s+{2}\s+{3}\s+{4}".format(  "(?P<minute>\*|[0-5]?\d)",
                                                         "(?P<hour>\*|[01]?\d|2[0-3])",
@@ -144,25 +145,22 @@ class EwelinkClient():
                                                         "(?P<month>\*|0?[1-9]|1[012])",
                                                         "(?P<day_of_week>\*|[0-6](\-[0-6])?)"
                                                       )
-
+    
     def __init__(self, phoneNumber=None,email=None,password=None, imei='01234567-89AB-CDEF-0123-456789ABCDEF', loop=None, mqttc=None, pub_topic='/ewelink_status/', configuration_file=None):
         self.logger = logging.getLogger('Main.'+__class__.__name__)
         self.logger.debug('Started Class: %s, version: %s' % (__class__.__name__,self.__version__))
         self.wsc_url = None
         self.apikey = 'UNCONFIGURED'
         self.authenticationToken = 'UNCONFIGURED'
-        # self.apiHost = 'us-api.coolkit.cc:8080'
-        # self.webSocketApi = 'us-pconnect3.coolkit.cc'
-        self.apiHost = 'eu-api.coolkit.cc:8080'
-        self.webSocketApi = 'eu-pconnect3.coolkit.cc'
-
+        self.apiHost = 'us-api.coolkit.cc:8080'
+        self.webSocketApi = 'us-pconnect3.coolkit.cc'
         self._nonce = ''.join([str(random.randint(0, 9)) for i in range(8)])
         self._sequence = int(time.time()*1000)
         self.connected = False
 
         self._match_iso8601 = re.compile(self._ISOregex).match
         self._match_cron = re.compile(self._cronregex).match
-
+         
         self._websocket = None
         self._disconnecting = False
         self._recconect_connection = False
@@ -172,7 +170,7 @@ class EwelinkClient():
         self._devices = []
         self._clients = {}
         self._parameters = {}  #initial parameters for clients
-        self._update_config = True
+        self._update_config = True 
         self._timeout = 0
         self._version = '6'
         self._os = 'iOS'
@@ -185,15 +183,15 @@ class EwelinkClient():
             '13.0', '13.1', '13.1.1', '13.1.2', '13.2'
         ])
         self._appVersion    = random.choice(['3.5.3', '3.5.4', '3.5.6', '3.5.8', '3.5.10', '3.5.12', '3.6.0', '3.6.1', '3.7.0', '3.8.0', '3.9.0', '3.9.1', '3.10.0', '3.11.0', '3.12.0'])
-
+        
         #client initialization parameters
         self._configuration = {}
         self._phoneNumber, self._email, self._password, self._imei, self._pub_topic = self.get_initialization_parameters(configuration_file, phoneNumber, email, password, imei, pub_topic)
-
+        
         if self._password is None or (self._phoneNumber is None and self._email is None) :
             self.logger.error('phone number/email or password cannot be empty')
             sys.exit(1)
-
+        
         self._mqttc = mqttc
         if self._mqttc:
             self._mqttc.on_message = self._on_message
@@ -205,8 +203,8 @@ class EwelinkClient():
                 self._device_classes[dev_class[1]] = dev_class[1].productModel
                 self.logger.debug('loaded device %s, V:%s, for device models: %s' % (dev_class[0],dev_class[1].__version__,dev_class[1].productModel))
             except AttributeError:
-                pass
-
+                pass    
+        
         if not loop:
             self.loop = asyncio.get_event_loop()
             if not self.loop.is_running():
@@ -214,14 +212,14 @@ class EwelinkClient():
                 from threading import Thread
                 self.t = Thread(target=self.loop.run_until_complete, args=(self.login(),))
                 self.t.start()
-
+                
                 if sys.platform != 'win32':     #linux only stuff
                     import signal
                     for signame in ('SIGINT', 'SIGTERM'):
                         self.loop.add_signal_handler(getattr(signal, signame),self.disconnect)
         else:
             self.loop = loop
-
+            
     def get_initialization_parameters(self, file, phoneNumber, email, password, imei, pub_topic):
         if imei is None:
             imei = str(uuid.uuid4())
@@ -232,7 +230,7 @@ class EwelinkClient():
                 my_password    = self._configuration['log_in'].get('password',password)
                 my_imei        = self._configuration['log_in'].get('imei',imei)
                 my_pub_topic   = self._configuration['mqtt'].get('pub_topic',pub_topic)
-
+                
                 if my_phoneNumber is None:
                     my_phoneNumber = phoneNumber
                 if my_email is None:
@@ -243,11 +241,11 @@ class EwelinkClient():
                     my_imei = imei
                 if my_pub_topic is None:
                     my_pub_topic = pub_topic
-
-                return my_phoneNumber, my_email, my_password, my_imei, my_pub_topic
-
-        return phoneNumber, email, password, imei, pub_topic
-
+                    
+                return my_phoneNumber, my_email, my_password, my_imei, my_pub_topic 
+                
+        return phoneNumber, email, password, imei, pub_topic  
+        
     def load_config(self, file):
         with open(file, 'r') as stream:
             try:
@@ -256,24 +254,24 @@ class EwelinkClient():
             except yaml.YAMLError as e:
                 self.logger.exception(e)
                 return False
-
+            
     def pprint(self,obj):
         """Pretty JSON dump of an object."""
         return(json.dumps(obj, sort_keys=True, indent=2, separators=(',', ': ')))
-
-    @property
+            
+    @property        
     def sequence(self):
         self._sequence = int(time.time()*1000)
         return str(self._sequence)
-
-    @property
+        
+    @property     
     def timestamp(self):
         return int(time.time())
-
+        
     @property
     def devices(self):
         return self._devices
-
+        
     def get_config(self, deviceid = ''):
         if deviceid:
             client = self._get_client(deviceid)
@@ -283,7 +281,7 @@ class EwelinkClient():
             for client in self._clients.values():
                device_list.append(client.config)
         return device_list
-
+        
     def set_initial_parameters(self, deviceid, **kwargs):
         '''
         set initial parameters for client
@@ -298,13 +296,13 @@ class EwelinkClient():
         #    self._publish('status', "Offline")
         #    return
         self._publish('client', 'status', "Starting")
-
+        
         data = {}
         if self._phoneNumber:
             data['phoneNumber'] = self._phoneNumber
         elif self._email:
             data['email'] = self._email
-
+            
         data['password'] = self._password
         data['version'] = self._version
         data['ts'] = self.timestamp
@@ -315,17 +313,17 @@ class EwelinkClient():
         data['model'] = self._model
         data['romVersion'] = self._romVersion
         data['appVersion'] = self._appVersion
-
+        
         json_data = json.dumps(data)
         self.logger.debug('Sending login request with user credentials: %s' % json_data)
-
+        
         decryptedAppSecret = '6Nz4n0xA8s8qdxQf2GqurZj2Fs55FUvM'
         hmac_result = hmac.new(decryptedAppSecret.encode('utf-8'), json_data.encode('utf-8'), hashlib.sha256)
         sign = base64.b64encode(hmac_result.digest()).decode('utf-8')
-
+        
         self.logger.debug('Login signature: %s', sign)
         self.logger.debug('Login data: %s', json_data)
-
+        
         """Retrieve the ewelink information."""
         self.logger.debug("Retrieving ewelink information.")
         url = 'https://{}/api/user/login'.format(self.apiHost)
@@ -341,8 +339,8 @@ class EwelinkClient():
                 json_response = await response.json()
 
             # If we receive 301 error, switch to new region and try again (untested...)
-            self.logger.debug('received response status: %s' %  response.status)
-            self.logger.debug('received response: %s' %  self.pprint(json_response))
+            self.logger.debug('received response status: %s' %  response.status)  
+            self.logger.debug('received response: %s' %  self.pprint(json_response))           
             if response.status == 301:
                 if json_response.get('error', None) or json_response.get('region', None):
                     if '-' not in self.apiHost:
@@ -385,7 +383,7 @@ class EwelinkClient():
         self.authenticationToken = json_response['at']
         await self.get_device_list()
         await self._getWebSocketHost()
-
+       
     async def _getWebSocketHost(self):
         data = {}
         data['accept'] = 'mqtt,ws'
@@ -398,10 +396,10 @@ class EwelinkClient():
         data['model'] = self._model
         data['romVersion'] = self._romVersion
         data['appVersion'] = self._appVersion
-
+        
         json_data = json.dumps(data)
         self.logger.debug('sending get websocket host data: %s' % json_data)
-
+        
         """Retrieve the ewelink websocket information."""
         self.logger.debug("Retrieving ewelink websocket information.")
         url = 'https://{}/dispatch/app'.format(self.apiHost.replace('-api', '-disp'))
@@ -416,8 +414,8 @@ class EwelinkClient():
             async with session.post(url, json=json_request, headers=headers) as response:
                 json_response = await response.json()
 
-            self.logger.debug('received response status: %s' %  response.status)
-            self.logger.debug('received response: %s' %  self.pprint(json_response))
+            self.logger.debug('received response status: %s' %  response.status)  
+            self.logger.debug('received response: %s' %  self.pprint(json_response))           
             if response.status != 200:
                 self.logger.error('error: %s received' % response.status)
                 return
@@ -429,23 +427,23 @@ class EwelinkClient():
         self.wsc_url = 'wss://{}:{}/api/ws'.format(json_response['domain'], json_response['port'])
         self.logger.debug('Websockets api host: %s' % self.wsc_url)
         await self.connect()
-
+    
     def _validate_iso8601(self,str_val):
-        try:
+        try:            
             if self._match_iso8601( str_val ) is not None:
                 return True
         except:
             pass
         return False
-
+        
     def _validate_cron(self,str_val):
-        try:
+        try:            
             if self._match_cron( str_val ) is not None:
                 return True
         except:
             pass
         return False
-
+    
     def _on_message(self, mosq, obj, msg):
         self.logger.debug("CLIENT: message received topic: %s" % msg.topic)
         #log.info("message topic: %s, value:%s received" % (msg.topic,msg.payload.decode("utf-8")))
@@ -453,16 +451,16 @@ class EwelinkClient():
         deviceid = msg.topic.split('/')[-2]
         message = msg.payload.decode("utf-8").strip()
         self.logger.info("CLIENT: Received Command: %s, device: %s, Setting: %s" % (command, deviceid, message))
-
+        
         if 'reconnect' in command:
             func = self._reconnect()
         else:
             client = self._get_client(deviceid)
             func = client.q.put((command, message))
-
+               
         #have to use this as mqtt client is running in another thread...
         asyncio.run_coroutine_threadsafe(func,self.loop)
-
+        
     def _publish(self, deviceid, topic, message):
         '''
         mqtt _publish
@@ -472,8 +470,12 @@ class EwelinkClient():
             return
         if deviceid is None:
             return
-        #new_topic = self._pub_topic+deviceid+'/'+topic
-        new_topic = topic
+        elif deviceid == 'client':
+            new_topic = self._pub_topic+deviceid+'/'+topic
+        elif deviceid == 'device':
+            new_topic = self._pub_topic+topic
+        else:
+            new_topic = topic #new template system passes full topic directly.
         try:
             if isinstance(message, (dict,list)):
                 message = json.dumps(message)
@@ -508,23 +510,23 @@ class EwelinkClient():
         async with ClientSession() as session:
             async with session.get(url, headers=headers) as response:
                 json_response = await response.json()
-
-            self.logger.debug('received response status: %s' %  response.status)
+ 
+            self.logger.debug('received response status: %s' %  response.status)  
             self.logger.debug('received response: %s' %  self.pprint(json_response))
             if response.status != 200:
                 self.logger.error('error: %s received' % response.status)
                 return
-
+                
         if json_response.get("devicelist"):
             self.logger.info('New response format found')
             json_response = json_response["devicelist"]
-
+        
         self.logger.debug('number of device(s) is: %d' % len(json_response))
-
+        
         self._devices = json_response   #list of devices and current configurations
-
+        
         self._create_client_devices()
-
+                
         '''
         Example Response:
          [
@@ -598,7 +600,7 @@ class EwelinkClient():
             "uiid": 54
           }
         ]
-
+        
         or New format:
         {
           "devicelist": [
@@ -614,7 +616,7 @@ class EwelinkClient():
               "deviceStatus": "",
         ... as before
         '''
-
+        
     def _create_client_devices(self):
         '''
         Create client devices
@@ -634,7 +636,7 @@ class EwelinkClient():
                     break
             else:
                 initial_parameters = {}
-
+                
             for client_class, productModels in self._device_classes.items():
                 for productModel in productModels:
                     if device["productModel"] == productModel:
@@ -642,16 +644,16 @@ class EwelinkClient():
                         self.logger.debug('Created instance of Device: %s, model: %s for: %s (%s)' % (client_class.__name__, productModel, deviceid, device_name))
                         found = True
                         break
-
+                        
             if not found:
                 self.logger.warn('Unsupported device: %s, using Default device' % device["productModel"])
                 self._clients[deviceid] = Default(self, deviceid, device, device["productModel"], initial_parameters)
                 self.logger.debug('Created instance of Device: %s, model: %s for: %s (%s)' % (self._clients[deviceid].__class__.__name__, device["productModel"], deviceid, device_name))
-
+                
         if len(self._clients) == 0:
             self.logger.critical('NO SUPPORTED DEVICES FOUND')
-
-
+        
+        
     async def _keepalive(self):
         self.logger.debug('starting keepalive task with timeout of %ss' % self._ping_timeout)
         while self._ping_timeout and self._websocket.open:
@@ -673,22 +675,23 @@ class EwelinkClient():
 
         self.logger.debug("Connecting to %s" % self.wsc_url)
         self._websocket = await websockets.connect(self.wsc_url)
-
-        #We need to authenticate upon opening the connection
+        
+        #We need to authenticate upon opening the connection (modified to remove apkVesrion, os, model, romVersion NW 28th Oct 2020)
         payload = {}
-
+        
         payload['action'] = "userOnline"
         payload['userAgent'] = 'app'
-        payload['version'] = 6
+        payload['version'] = 8
+        payload['appid'] = self._appid
         payload['_nonce'] = self._nonce
         #payload['apkVesrion'] = "1.8"
-        payload['apkVersion'] = "1.8"
-        payload['os'] = 'ios'
+        #payload['apkVersion'] = "1.8"
+        #payload['os'] = 'ios'
         payload['at'] = self.authenticationToken
         payload['apikey'] = self.apikey
         payload['ts'] = self.timestamp
-        payload['model'] = 'iPhone10,6'
-        payload['romVersion'] = '11.1.2'
+        #payload['model'] = 'iPhone10,6'
+        #payload['romVersion'] = '11.1.2'
         payload['sequence'] = self.sequence
 
         string = json.dumps(payload);
@@ -706,12 +709,12 @@ class EwelinkClient():
         self._disconnecting = False
 
         await self._receive_loop()
-
+        
     async def _receive_loop(self):
         while self._websocket.open:
             try:
                 self.logger.debug('waiting for data')
-
+                
                 response_json = await self._websocket.recv()
                 #self.logger.debug("Received text data: %s", response_json)
                 if response_json == 'pong':
@@ -721,23 +724,23 @@ class EwelinkClient():
                     response = json.loads(response_json)
                     self.logger.debug("Received data: %s" % self.pprint(response))
                     deviceid = response.get('deviceid', None)
-                    self._publish(deviceid, 'json', response_json)
+                    self._publish('device', '{}/json'.format(deviceid), response_json)
                     if response.get('config', None):
                         if response['config'].get('hb',0) == 1:
                             self._ping_timeout = response['config'].get('hbInterval', None)
                             self.logger.debug('setting keepalive timeout to %s' % self._ping_timeout)
                             self._keepalive_task = self.loop.create_task(self._keepalive())
-
+                            
                     if response.get('error', None) is not None:
                         self._received_sequence = response.get('sequence', None)
                         self.logger.debug('received sequence: %s, sent sequence: %s' % (self._received_sequence, self._sequence))
                         if deviceid:
                             if response['error'] == 0:
                                 self.logger.debug('command completed successfully')
-                                self._publish(deviceid, 'status', "OK")
+                                self._publish('device', '{}/status'.format(deviceid), "OK")
                             else:
                                 self.logger.warn('error: %s' % self.pprint(response))
-                                self._publish(deviceid, 'status', "Error: " + response.get('reason','unknown'))
+                                self._publish('device', '{}/status'.format(deviceid), "Error: " + response.get('reason','unknown'))
                                 self._update_config = False
 
                     if deviceid:
@@ -745,22 +748,22 @@ class EwelinkClient():
                         if client:
                             client._handle_notification(response)
                         self.connected = True
-
+                
                 if self._update_config:
                     self._update_config = False
                     await self._getparameter(deviceid)
-
+                
             except websockets.exceptions.ConnectionClosed:
                 self.logger.debug('WS connection closed')
                 break
-
+            
             except Exception as e:
                 self.logger.exception(e)
                 break
-
+                
         await self._disconnect()
         self.logger.debug('Exited Receive Loop')
-
+        
         if self._recconect_connection:
             self._recconect_connection = False
             await self.connect()
@@ -778,7 +781,7 @@ class EwelinkClient():
                 await client.q.put((None,None))
                 await client.q.join()
                 self._clients[deviceid]=None
-
+        
         self._ping_timeout = None
         if self._keepalive_task:
             self._keepalive_task.cancel()
@@ -787,7 +790,7 @@ class EwelinkClient():
         self._websocket = None
         self.connected = False
         self._publish('client', 'status', "Disconnected")
-
+        
     async def _reconnect(self):
         self._publish('client', 'status', "Reconnecting")
         self._disconnecting = True
@@ -802,11 +805,11 @@ class EwelinkClient():
         """Send a payload request to websocket"""
         # Make sure we're connected.
         await self._perform_connect()
-
+        
         while self._timeout > 0:
             self.logger.debug('waiting for previous command response')
             await asyncio.sleep(1)
-
+ 
         self.logger.debug("Sending command: %s", command)
         await self._websocket.send(command)
         if waitResponse and self.connected:
@@ -814,8 +817,8 @@ class EwelinkClient():
                 self._timeout += 1
                 self.logger.debug('waiting for response sequence: %s, current sequence: %s' % (self._sequence,self._received_sequence))
                 await asyncio.sleep(1)
-            self._timeout = 0
-
+            self._timeout = 0    
+        
     async def _sendjson(self, deviceid, message):
         """Send a json payload direct to device"""
 
@@ -831,27 +834,27 @@ class EwelinkClient():
             payload['deviceid'] = deviceid
             payload['ts'] = self.timestamp
             payload['sequence'] = self.sequence
-
+     
             string = json.dumps(payload)
             self.logger.debug('sending: %s' %  self.pprint(payload))
 
             await self._send_request(string)
-
+        
         except json.JSONDecodeError as e:
             self.logger.error('json encoding error inmessage: %s: %s' % (message,e))
-
+        
     async def _getparameter(self, sel_device='', params=[], waitResponse=False):
         self._update_config = False
-
+        
         updated = 0
         device_id = None
-
+        
         if sel_device:
             device_id = self.get_deviceid(str(sel_device))
             if not device_id:
                 self.logger.error('device %s not found' % sel_device)
                 return
-
+        
         for num, device in enumerate(self._devices):
             if not sel_device or device['deviceid'] == device_id:
                 updated+=1
@@ -874,26 +877,26 @@ class EwelinkClient():
                 self.logger.debug('sending: %s' %  self.pprint(payload) )
 
                 await self._send_request(string, waitResponse)
-
+                
         if updated == 0:
             self.logger.warn('device not found: %s' % sel_device)
-
+        
     async def _setparameter(self, sel_device, param, targetState, update_config=True, waitResponse=False):
         '''
         sends either a single parameter to the device, or a dictionary of multiple parameters.
         '''
-
+        
         #self.logger.debug('PARENT setting parameter: %s, to %s for %s' % (param, targetState, sel_device))
-
+        
         deviceid = self.get_deviceid(sel_device)
         if not deviceid:
             self.logger.error('device %s not found' % sel_device)
-            return
+            return    
 
         params = {param:targetState}
-
+            
         self.logger.debug("Setting param: %s to [%s] for device [%s]" % (param, targetState, self.get_devicename(deviceid)))
-
+        
         #sequence and selfApiKey are optional...
 
         payload = {}
@@ -911,11 +914,11 @@ class EwelinkClient():
         self.logger.debug('sending: %s' %  self.pprint(payload) )
 
         await self._send_request(string, waitResponse)
-
+        
         if update_config:
             await asyncio.sleep(1)
             self._update_config = True
-
+        
     def get_deviceid(self, sel_device=0):
         deviceid = None
         num_device = -1
@@ -926,9 +929,9 @@ class EwelinkClient():
             if device['deviceid'] == sel_device or device['name'] == sel_device or num == num_device:
                 deviceid = device['deviceid']
                 break
-
+        
         return deviceid
-
+        
     def update(self, d, u):
         '''
         Update nested dictionaries
@@ -939,19 +942,20 @@ class EwelinkClient():
             else:
                 d[k] = v
         return d
-
+        
     def get_devicename(self, deviceid=None):
         client = self._get_client(deviceid)
         return client.name
-
+        
     def _get_client(self, deviceid):
         deviceid = self.get_deviceid(deviceid)
         client = self._clients.get(deviceid, None)
         return client
-
+        
     def send_command(self, deviceid, command, message):
         client = self._get_client(deviceid)
         client.send_command(command, message)
-
+            
     def disconnect(self):
         asyncio.run_coroutine_threadsafe(self._disconnect(),self.loop)
+        
