@@ -30,6 +30,7 @@ log_in:
   email: call2me@free.fr
   password: Djx
   imei: '01234567-89AB-BEEF-0123-456789ABCDEF'
+  region: 'eu'
 
 
 #==========================================================================

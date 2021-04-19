@@ -4,6 +4,7 @@
 # Description: OH interface to Autoslide Door
 # N Waterton 1st January 2019 V1.0: initial release
 # N Waterton 8th october 2020 V1.1.0: Add LAN mode and V3 Discovery
+# N Waterton 19th April 2021 V1.1.1: Add region option
 
 from __future__ import print_function
 
@@ -27,7 +28,7 @@ import asyncio
 from discover import Discover
 import ewelink_client
 
-__version__ = __VERSION__ = "1.1.0"
+__version__ = __VERSION__ = "1.1.1"
         
 def pprint(obj):
     """Pretty JSON dump of an object."""
@@ -158,6 +159,7 @@ def main():
     # Flags with default values go here.
     parser.add_argument('-P','--e_password', action="store", default=None, help='ewelink password (used for login)')
     parser.add_argument('-i','--imei', action="store", default=None, help='ewelink imei (used for login) - optional')
+    parser.add_argument('-r','--region', action="store", default='us', help='ewelink region (used for login) - default us')
     parser.add_argument('-d','--device', action="store", default='default', help='Device id of target Device, can be index number, name or deviceid (default is 0)')
     parser.add_argument('-dp','--delay_person', action="store", default=None, help='Delay in seconds for person trigger, default is same as Pet trigger')
     #parser.add_argument('-cid','--client_id', action="store", default=None, help='optional MQTT CLIENT ID (default=None)')
@@ -257,7 +259,7 @@ def main():
             
         found_devices = discover()  #discover V3 fw LAN mode devices
             
-        client = ewelink_client.EwelinkClient(arg.phone, arg.email, arg.e_password, arg.imei, loop, mqttc, arg.pub_topic, arg.config)
+        client = ewelink_client.EwelinkClient(arg.phone, arg.email, arg.e_password, arg.imei, loop, mqttc, arg.pub_topic, arg.region, arg.config)
         
         client.set_initial_parameters(arg.device, delay_person=arg.delay_person)
         

@@ -2,7 +2,7 @@
 Server Bridge to control Sonoff Devices via MQTT
 **This uses Sonoff stock firmware, no flashing required.**
 
-**Version 1.0**
+**Version 1.2**
 Tested on Ubuntu 18.04, Python 3.6.
 
 ## Limitations
@@ -11,13 +11,14 @@ This is a python 3.6 program and uses asyncio. you will need several libraries i
 * paho-mqtt
 * websockets
 * aiohttp
+* zeroconf
 * yaml  __note: yaml is not actually used, but some experimental code is in there....__
 
-I have only verified that e-mail logins works, and can only test the North America region.
+I have only verified that e-mail logins works, and can only test the North America region *(eu region has also been tested now)*.
 
 **NOTE:**
 The server only supports one eWeLink account where you can connect using your app email and password, or in place of the email you can use your 
-phone number and password (but **I have not tried phone number logins, or regions other that North America**). Each time an eWeLink is logged in an authentication token is generated and you can only have one token per user, 
+phone number and password (but **I have not tried phone number logins, or regions other that North America and Europe**). Each time an eWeLink is logged in an authentication token is generated and you can only have one token per user, 
 so after starting the server, you must keep your eWeLink account logged off. Otherwise, if you try to use eWeLink at the same time as the server with your paired devices, 
 both applications will be contending for a login session and neither will stay online.
 
@@ -50,7 +51,7 @@ Command to run is `ewelink_server.py`
 ```
 nick@MQTT-Servers-Host:~/Scripts/ewelink$ ./ewelink_server.py -h
 usage: ewelink_server.py [-h] (-ph PHONE | -em EMAIL | -cf CONFIG)
-                         [-P E_PASSWORD] [-i IMEI] [-d DEVICE]
+                         [-P E_PASSWORD] [-i IMEI] [-r REGION] [-d DEVICE]
                          [-dp DELAY_PERSON] [-b BROKER] [-p PORT] [-u USER]
                          [-pw PASSWORD] [-pt PUB_TOPIC] [-st SUB_TOPIC]
                          [-l LOG] [-D] [-V]
@@ -78,6 +79,8 @@ optional arguments:
   -P E_PASSWORD, --e_password E_PASSWORD
                         ewelink password (used for login)
   -i IMEI, --imei IMEI  ewelink imei (used for login) - optional
+  -r REGION, --region REGION
+                        ewelink region (used for login) - default us
   -d DEVICE, --device DEVICE
                         Device id of target Device, can be index number, name
                         or deviceid (default is 0)
@@ -114,6 +117,9 @@ Now when you start `ewelink_server.py` with your account credentials and mqtt br
 You can figure out which device id is which (it's in the ewelink app, or you can use `get_config`.
 
 If no broker address is given then a command is expected to be given (like `get_config`) - you have to supply one of these two options. See the examples above.
+
+### Regions
+The two tested regions are `us` (default) and `eu`. Region can also be added to the `config.yaml` file **log_in** section, see the example file.
 
 ## Devices
 Many standard devices are supported (built in). if you have an unsupported device, the default for a Basic switch is used.

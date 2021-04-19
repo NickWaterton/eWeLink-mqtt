@@ -4,6 +4,7 @@
 '''
 N Waterton 11th Jan 2019 V1.0 First release
 N. Waterton 18th April 20201 V 1.2 Updated login method.
+N. Waterton 19th April 20201 V 1.2.1 Added region selector to constructor.
 '''
 
 '''
@@ -131,12 +132,12 @@ import logging
 
 logger = logging.getLogger('Main.'+__name__)
 
-__version__ = '1.2'
+__version__ = '1.2.1'
 
 class EwelinkClient():
     """A websocket client for connecting to ITEAD's devices."""
     
-    __version__ = '1.2'
+    __version__ = '1.2.1'
     
     _ISOregex = r'^(-?(?:[1-9][0-9]*)?[0-9]{4})-(1[0-2]|0[1-9])-(3[01]|0[1-9]|[12][0-9])T(2[0-3]|[01][0-9]):([0-5][0-9]):([0-5][0-9])(\.[0-9]+)?(Z|[+-](?:2[0-3]|[01][0-9]):[0-5][0-9])?$'
     _cronregex = "{0}\s+{1}\s+{2}\s+{3}\s+{4}".format(  "(?P<minute>\*|[0-5]?\d)",
@@ -146,14 +147,17 @@ class EwelinkClient():
                                                         "(?P<day_of_week>\*|[0-6](\-[0-6])?)"
                                                       )
     
-    def __init__(self, phoneNumber=None,email=None,password=None, imei='01234567-89AB-CDEF-0123-456789ABCDEF', loop=None, mqttc=None, pub_topic='/ewelink_status/', configuration_file=None):
+    def __init__(self, phoneNumber=None,email=None,password=None, imei='01234567-89AB-CDEF-0123-456789ABCDEF', loop=None, mqttc=None, pub_topic='/ewelink_status/', region='us', configuration_file=None):
         self.logger = logging.getLogger('Main.'+__class__.__name__)
         self.logger.debug('Started Class: %s, version: %s' % (__class__.__name__,self.__version__))
         self.wsc_url = None
         self.apikey = 'UNCONFIGURED'
         self.authenticationToken = 'UNCONFIGURED'
-        self.apiHost = 'us-api.coolkit.cc:8080'
-        self.webSocketApi = 'us-pconnect3.coolkit.cc'
+        api_base = '-api.coolkit.cc:8080'
+        ws_base = '-pconnect3.coolkit.cc'
+        #tested regions 'us' and 'eu'
+        self.apiHost = '{}{}'.format(region, api_base)
+        self.webSocketApi = '{}{}'.format(region, ws_base)
         self._nonce = ''.join([str(random.randint(0, 9)) for i in range(8)])
         self._sequence = int(time.time()*1000)
         self.connected = False
@@ -186,7 +190,12 @@ class EwelinkClient():
         
         #client initialization parameters
         self._configuration = {}
-        self._phoneNumber, self._email, self._password, self._imei, self._pub_topic = self.get_initialization_parameters(configuration_file, phoneNumber, email, password, imei, pub_topic)
+        self._phoneNumber, self._email, self._password, self._imei, self.region, self._pub_topic = self.get_initialization_parameters(configuration_file, phoneNumber, email, password, imei, region, pub_topic)
+        
+        if self.region:
+            #tested regions 'us' and 'eu'
+            self.apiHost = '{}{}'.format(region, api_base)
+            self.webSocketApi = '{}{}'.format(region, ws_base)
         
         if self._password is None or (self._phoneNumber is None and self._email is None) :
             self.logger.error('phone number/email or password cannot be empty')
@@ -220,7 +229,7 @@ class EwelinkClient():
         else:
             self.loop = loop
             
-    def get_initialization_parameters(self, file, phoneNumber, email, password, imei, pub_topic):
+    def get_initialization_parameters(self, file, phoneNumber, email, password, imei, region, pub_topic):
         if imei is None:
             imei = str(uuid.uuid4())
         if file:
@@ -229,6 +238,7 @@ class EwelinkClient():
                 my_email       = self._configuration['log_in'].get('email',email)
                 my_password    = self._configuration['log_in'].get('password',password)
                 my_imei        = self._configuration['log_in'].get('imei',imei)
+                my_region      = self._configuration['log_in'].get('region',region)
                 my_pub_topic   = self._configuration['mqtt'].get('pub_topic',pub_topic)
                 
                 if my_phoneNumber is None:
@@ -239,12 +249,14 @@ class EwelinkClient():
                     my_password = password
                 if my_imei is None:
                     my_imei = imei
+                if my_region is None:
+                    my_region = region
                 if my_pub_topic is None:
                     my_pub_topic = pub_topic
                     
-                return my_phoneNumber, my_email, my_password, my_imei, my_pub_topic 
+                return my_phoneNumber, my_email, my_password, my_imei, my_region, my_pub_topic 
                 
-        return phoneNumber, email, password, imei, pub_topic  
+        return phoneNumber, email, password, imei, region, pub_topic  
         
     def load_config(self, file):
         with open(file, 'r') as stream:
