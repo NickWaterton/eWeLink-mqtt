@@ -209,7 +209,11 @@ class Default():
                 You can use this to send custom json parameters to the device (if you know the format)
                 '''
                 self.logger.debug('send_json: for device %s' % self.deviceid)
-                func = self._sendjson(json_message) 
+                try:
+                    json_message = json.loads(json_message.replace("'",'"'))
+                    func = self._sendjson(json_message)
+                except json.JSONDecodeError as e:
+                    self.log.error('Your json is invalid: {}, Error: {}'.format(json_message, e))
                 
             elif 'get_config' in command:
                 self.logger.debug('get_config: for device %s' % self.deviceid)
@@ -469,8 +473,9 @@ class Default():
     async def _sendjson(self, message):
         ''' send a dictionary of parameters as a json string '''
         if isinstance(message, str):
-            message = json.loads(message.replace("'",'"'))
-        await self._parent._sendjson(self.deviceid, json.dumps(message))
+            await self._parent._sendjson(self.deviceid, message)
+        else:
+            await self._parent._sendjson(self.deviceid, json.dumps(message))
         
     async def _getparameter(self, params=[], waitResponse=False):
         await self._parent._getparameter(self.deviceid, params, waitResponse)
