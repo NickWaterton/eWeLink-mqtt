@@ -123,7 +123,7 @@ class Default():
                      
     timers_supported=[  'delay', 'repeat', 'once', 'duration']
 
-    __version__ = '1.0'
+    __version__ = '1.0.1'
 
     def __init__(self, parent, deviceid, device, productModel, initial_parameters={}):
         self.logger = logging.getLogger('Main.'+__class__.__name__)
@@ -468,6 +468,8 @@ class Default():
         
     async def _sendjson(self, message):
         ''' send a dictionary of parameters as a json string '''
+        if isinstance(message, str):
+            message = json.loads(message.replace("'",'"'))
         await self._parent._sendjson(self.deviceid, json.dumps(message))
         
     async def _getparameter(self, params=[], waitResponse=False):
