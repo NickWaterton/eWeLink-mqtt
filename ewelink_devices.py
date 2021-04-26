@@ -180,13 +180,35 @@ class Default():
     @property
     def name(self):
         return self._config['name']
+        
+    def is_number(self, s):
+        try:
+            float(s)
+            return True
+        except ValueError:
+            return False
+        
+    def convert_json(self, message, throw_error=False):
+        '''
+        converts message to dictionary if it's a valid json string.
+        Does not convert single numbers, returns them unchanged.
+        If throw_error is set, raises JSONDecodeError on invalid json
+        '''
+        if isinstance(message, str):
+            try:
+                if not self.is_number(message):
+                    message = json.loads(message.replace("'",'"'))
+            except json.JSONDecodeError:
+                if throw_error:
+                    raise
+        return message
     
     def _on_message(self, command, message):
         self.logger.info("%s CLIENT: Received Command: %s, device: %s, Setting: %s" % (__class__.__name__,command, self.deviceid, message))
         func = None
         
         json_message = message
-        message = message.lower()   #make case insensitive as "ON" does not work ("on" does)
+        message = self.convert_json(message.lower())   #make case insensitive as "ON" does not work ("on" does)
         
         for param, description in self.settings.items():
             if command == param or command == description:
@@ -210,8 +232,7 @@ class Default():
                 '''
                 self.logger.debug('send_json: for device %s' % self.deviceid)
                 try:
-                    json_message = json.loads(json_message.replace("'",'"'))
-                    func = self._sendjson(json_message)
+                    func = self._sendjson(self.convert_json(json_message, True))
                 except json.JSONDecodeError as e:
                     self.log.error('Your json is invalid: {}, Error: {}'.format(json_message, e))
                 
