@@ -2,9 +2,13 @@
 # -*- coding: utf-8 -*-
 
 '''
+see https://github.com/hansharhoff/HASS-sonoff-ewelink for login sequence used
+see https://github.com/AlexxIT/SonoffLAN/blob/master/custom_components/sonoff/core/ewelink/cloud.py for new login sequence (10/7/22)
+also see https://coolkit-technologies.github.io/eWeLink-API/#/en/DeveloperGuideV2
 N Waterton 11th Jan 2019 V1.0 First release
 N. Waterton 18th April 20201 V 1.2 Updated login method.
 N. Waterton 19th April 20201 V 1.2.1 Added region selector to constructor.
+N. Waterton 8th July 20202 V 1.2.2 Added retry on login failure, new appId and AppSecret added
 '''
 
 '''
@@ -109,10 +113,73 @@ There are only a few devices defined in ewelink_devices.py (I only have a few to
 Nick Waterton P.Eng.
 '''
 
+'''
+Autoslide device:
+  {
+    "name": "Patio Door",
+    "deviceid": "100050a4f3",
+    "apikey": "530303a6-cf2c-4246-894c-50855b00e6d8",
+    "extra": {
+      "uiid": 54,
+      "description": "20180813001",
+      "brandId": "5a6fcf00f620073c67efc280",
+      "apmac": "d0:27:00:a1:47:37",
+      "mac": "d0:27:00:a1:47:36",
+      "ui": "\u63a8\u62c9\u5ba0\u7269\u95e8",
+      "modelInfo": "5af3f5332c8642b001540dac",
+      "model": "PSA-BTA-GL",
+      "manufacturer": "\u9752\u5c9b\u6fb3\u601d\u5fb7\u667a\u80fd\u95e8\u63a7\u7cfb\u7edf\u6709\u9650\u516c\u53f8",
+      "staMac": "68:C6:3A:D5:9E:E6"
+    },
+    "brandName": "AUTOSLIDE",
+    "brandLogo": "",
+    "showBrand": true,
+    "productModel": "WFA-1",
+    "devConfig": {},
+    "settings": {
+      "opsNotify": 0,
+      "opsHistory": 1,
+      "alarmNotify": 1,
+      "wxAlarmNotify": 0,
+      "wxOpsNotify": 0,
+      "wxDoorbellNotify": 0,
+      "appDoorbellNotify": 1
+    },
+    "devGroups": [],
+    "family": {
+      "familyid": "5f7de770e962cd0007681550",
+      "index": -1,
+      "members": [
+        "0f824698-9928-4d56-8658-1a914f04465a"
+      ],
+      "roomid": "5f7de770e962cd000768154d"
+    },
+    "shareTo": [],
+    "devicekey": "4123ec79-d2c3-4d32-930a-037ca3b5d0ef",
+    "online": true,
+    "params": {
+      "sledOnline": "off",
+      "rssi": -71,
+      "fwVersion": "2.7.0",
+      "staMac": "68:C6:3A:D5:9E:E6",
+      "c": "1",
+      "m": "2",
+      "n": "0",
+      "b": "3",
+      "a": "3",
+      "j": "00"
+    },
+    "isSupportGroup": false,
+    "isSupportedOnMP": false,
+    "deviceFeature": {}
+  },
+'''
+
 import json
 import asyncio
 import websockets
 from aiohttp import ClientSession
+from aiohttp.client_exceptions import ClientConnectorError
 import time
 import math
 import sys
@@ -132,12 +199,12 @@ import logging
 
 logger = logging.getLogger('Main.'+__name__)
 
-__version__ = '1.2.1'
+__version__ = '1.2.2'
 
 class EwelinkClient():
     """A websocket client for connecting to ITEAD's devices."""
     
-    __version__ = '1.2.1'
+    __version__ = __version__
     
     _ISOregex = r'^(-?(?:[1-9][0-9]*)?[0-9]{4})-(1[0-2]|0[1-9])-(3[01]|0[1-9]|[12][0-9])T(2[0-3]|[01][0-9]):([0-5][0-9]):([0-5][0-9])(\.[0-9]+)?(Z|[+-](?:2[0-3]|[01][0-9]):[0-5][0-9])?$'
     _cronregex = "{0}\s+{1}\s+{2}\s+{3}\s+{4}".format(  "(?P<minute>\*|[0-5]?\d)",
@@ -146,6 +213,11 @@ class EwelinkClient():
                                                         "(?P<month>\*|0?[1-9]|1[012])",
                                                         "(?P<day_of_week>\*|[0-6](\-[0-6])?)"
                                                       )
+                                                      
+    APP = [# ("oeVkj2lYFGnJu5XUtWisfW4utiN4u9Mq", "6Nz4n0xA8s8qdxQf2GqurZj2Fs55FUvM"),  #old - no longer works 10/7/22
+            ("KOBxGJna5qkk3JLXw3LHLX3wSNiPjAVi", "4v0sv6X5IM2ASIBiNDj6kGmSfxo40w7n"),
+            ("R8Oq3y0eSZSYdKccHlrQzT1ACCOUT9Gv", "1ve5Qk9GXfUhKAn1svnKwpAlxXkMarru")
+          ]
     
     def __init__(self, phoneNumber=None,email=None,password=None, imei='01234567-89AB-CDEF-0123-456789ABCDEF', loop=None, mqttc=None, pub_topic='/ewelink_status/', region='us', configuration_file=None):
         self.logger = logging.getLogger('Main.'+__class__.__name__)
@@ -178,7 +250,10 @@ class EwelinkClient():
         self._timeout = 0
         self._version = '6'
         self._os = 'iOS'
-        self._appid = 'oeVkj2lYFGnJu5XUtWisfW4utiN4u9Mq'
+        self.app_key = 0
+        #self._appid = self.APP[self.app_key][0]#'oeVkj2lYFGnJu5XUtWisfW4utiN4u9Mq'
+        #self._AppSecret = self.APP[self.app_key][1]#'6Nz4n0xA8s8qdxQf2GqurZj2Fs55FUvM'
+        self._appid, self._AppSecret = self.APP[self.app_key]
         self._model         = 'iPhone' + random.choice(['6,1', '6,2', '7,1', '7,2', '8,1', '8,2', '8,4', '9,1', '9,2', '9,3', '9,4', '10,1', '10,2', '10,3', '10,4', '10,5', '10,6', '11,2', '11,4', '11,6', '11,8'])
         self._romVersion    = random.choice([
             '10.0', '10.0.2', '10.0.3', '10.1', '10.1.1', '10.2', '10.2.1', '10.3', '10.3.1', '10.3.2', '10.3.3', '10.3.4',
@@ -318,7 +393,7 @@ class EwelinkClient():
         data['password'] = self._password
         data['version'] = self._version
         data['ts'] = self.timestamp
-        data['_nonce'] = self._nonce
+        data['nonce'] = self._nonce
         data['appid'] = self._appid
         data['imei'] = self._imei
         data['os'] = self._os
@@ -329,8 +404,8 @@ class EwelinkClient():
         json_data = json.dumps(data)
         self.logger.debug('Sending login request with user credentials: %s' % json_data)
         
-        decryptedAppSecret = '6Nz4n0xA8s8qdxQf2GqurZj2Fs55FUvM'
-        hmac_result = hmac.new(decryptedAppSecret.encode('utf-8'), json_data.encode('utf-8'), hashlib.sha256)
+        #decryptedAppSecret = '6Nz4n0xA8s8qdxQf2GqurZj2Fs55FUvM'    #old AppSecret - replaced by self._AppSecret
+        hmac_result = hmac.new(self._AppSecret.encode('utf-8'), json_data.encode('utf-8'), hashlib.sha256)
         sign = base64.b64encode(hmac_result.digest()).decode('utf-8')
         
         self.logger.debug('Login signature: %s', sign)
@@ -344,64 +419,74 @@ class EwelinkClient():
             'Content-Type': 'application/json;charset=UTF-8',
         }
         json_request = json.loads(json_data)
+        while True:
+            try:
+                self.logger.debug('url: %s, headers: %s, data: %s' % (url, headers,json_request))
+                async with ClientSession() as session:
+                    async with session.post(url, json=json_request, headers=headers) as response:
+                        json_response = await response.json()
 
-        self.logger.debug('url: %s, headers: %s, data: %s' % (url, headers,json_request))
-        async with ClientSession() as session:
-            async with session.post(url, json=json_request, headers=headers) as response:
-                json_response = await response.json()
-
-            # If we receive 301 error, switch to new region and try again (untested...)
-            self.logger.debug('received response status: %s' %  response.status)  
-            self.logger.debug('received response: %s' %  self.pprint(json_response))           
-            if response.status == 301:
-                if json_response.get('error', None) or json_response.get('region', None):
-                    if '-' not in self.apiHost:
-                        self.logger.debug("Received new region [%s]. However we cannot construct the new API host url." % json_response.get('region', None))
-                        return
-                newApiHost = json_response.get('region', '') + self.apiHost.split('-')[1]
-                if self.apiHost != newApiHost:
-                    self.logger.debug("Received new region [%s], updating API host to [%s]." % (json_response['region'], newApiHost))
-                    self.apiHost = newApiHost
-                    self.login()
-                    #return
-            elif response.status == 200:
-                if json_response.get('error',None):
-                    self.logger.error('login error: %d, :%s' %(json_response['error'], json_response.get('info')))
-                    return
-            '''
-            Example good Response:
-            received response: {
-              "at": "bxxxdd05065xxxxxxxe71989xxxxx4becad64",
-              "region": "us",
-              "rt": "d5bxxx86c5axxe62xxx1856fc1bexxxd9f5",
-              "user": {
-                "_id": "5xx6fbxxx9bxxx82xxxx353a2",
-                "apikey": "530303a6-cf2c-4246-894c-xxxxxxxxxxxx",
-                "appId": "SFjcK1b2tlVMIXIa8G61irex6aBkr7MN",
-                "createdAt": "2018-11-10T15:40:47.101Z",
-                "email": "e-mail@gmail.com",
-                "ip": "xxx.xx.xx.xxx",
-                "lang": "en",
-                "location": "",
-                "offlineTime": "2018-12-31T15:32:02.787Z",
-                "online": false,
-                "onlineTime": "2018-12-31T15:31:57.323Z",
-                "userStatus": "2"
-              }
-            }
-                '''
-        self.apikey = json_response['user']['apikey']
-        self.logger.debug('Authentication token received [%s]', json_response['at']);
-        self.authenticationToken = json_response['at']
-        await self.get_device_list()
-        await self._getWebSocketHost()
+                    # If we receive 301 error, switch to new region and try again (untested...)
+                    self.logger.debug('received response status: %s' %  response.status)  
+                    self.logger.debug('received response: %s' %  self.pprint(json_response))           
+                    if response.status == 301:
+                        if json_response.get('error', None) or json_response.get('region', None):
+                            if '-' not in self.apiHost:
+                                self.logger.debug("Received new region [%s]. However we cannot construct the new API host url." % json_response.get('region', None))
+                                return
+                        newApiHost = json_response.get('region', '') + self.apiHost.split('-')[1]
+                        if self.apiHost != newApiHost:
+                            self.logger.debug("Received new region [%s], updating API host to [%s]." % (json_response['region'], newApiHost))
+                            self.apiHost = newApiHost
+                            self.login()
+                            #return
+                    elif response.status == 200:
+                        if json_response.get('error',None):
+                            self.logger.error('login error: %d, :%s' %(json_response['error'], json_response.get('info')))
+                            self.app_key = 1
+                            return
+                    '''
+                    Example good Response:
+                    received response: {
+                      "at": "bxxxdd05065xxxxxxxe71989xxxxx4becad64",
+                      "region": "us",
+                      "rt": "d5bxxx86c5axxe62xxx1856fc1bexxxd9f5",
+                      "user": {
+                        "_id": "5xx6fbxxx9bxxx82xxxx353a2",
+                        "apikey": "530303a6-cf2c-4246-894c-xxxxxxxxxxxx",
+                        "appId": "SFjcK1b2tlVMIXIa8G61irex6aBkr7MN",
+                        "createdAt": "2018-11-10T15:40:47.101Z",
+                        "email": "e-mail@gmail.com",
+                        "ip": "xxx.xx.xx.xxx",
+                        "lang": "en",
+                        "location": "",
+                        "offlineTime": "2018-12-31T15:32:02.787Z",
+                        "online": false,
+                        "onlineTime": "2018-12-31T15:31:57.323Z",
+                        "userStatus": "2"
+                      }
+                    }
+                        '''
+                self.apikey = json_response['user']['apikey']
+                self.logger.debug('Authentication token received [%s]', json_response['at']);
+                self.authenticationToken = json_response['at']
+                await self.get_device_list()
+                await self._getWebSocketHost()
+                break
+            except ClientConnectorError as e:
+                self.logger.error(e)
+                await asyncio.sleep(60)
+                self.logger.warning('Retrying login')
+            except Exception as e:
+                self.logger.exception(e)
+                break
        
     async def _getWebSocketHost(self):
         data = {}
         data['accept'] = 'mqtt,ws'
         data['version'] = self._version
         data['ts'] = self.timestamp
-        data['_nonce'] = self._nonce
+        data['nonce'] = self._nonce
         data['appid'] = self._appid
         data['imei'] = self._imei
         data['os'] = self._os

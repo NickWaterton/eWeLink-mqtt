@@ -123,7 +123,7 @@ class Default():
                      
     timers_supported=[  'delay', 'repeat', 'once', 'duration']
 
-    __version__ = '1.0.1'
+    __version__ = '1.1'
 
     def __init__(self, parent, deviceid, device, productModel, initial_parameters={}):
         self.logger = logging.getLogger('Main.'+__class__.__name__)
@@ -131,6 +131,8 @@ class Default():
         self._parent = parent
         self._deviceid = deviceid
         self._config = device
+        if device:
+            self.devicekey = device.get('devicekey', None)   #this is the apikey for V3 fw encryption (if not in DIY mode)
         self.loop = asyncio.get_event_loop()
         self._update_settings(self._config)
         self.load_template()
@@ -619,7 +621,7 @@ class Autoslide(Default):
                         
     timers_supported=[  'delay', 'repeat']
                            
-    __version__ = '1.0'
+    __version__ = '1.1'
 
     def __init__(self, parent, deviceid, device, productModel, initial_parameters={}):
         self.logger = logging.getLogger('Main.'+__class__.__name__)
@@ -627,6 +629,8 @@ class Autoslide(Default):
         self._parent = parent
         self._deviceid = deviceid
         self._config = device
+        if device:
+            self.devicekey = device.get('devicekey', None)   #this is the apikey for V3 fw encryption (if not in DIY mode)
         self._productModel = productModel   #we are created as this kind of productModel if there is more than one kind of model(one of self.productModel list)
         self._org_delay = None
         self._delay_person = None
