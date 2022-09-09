@@ -11,6 +11,7 @@ This is a python 3.8 program and uses asyncio. you will need several libraries i
 * paho-mqtt
 * aiohttp
 * zeroconf
+* voluptuous
 
 The eWelink authentication is based on the Home-Assistant SonoffLAN custom component. https://github.com/AlexxIT/SonoffLAN
 **You Need to download this custom component to the eWeLink-mqtt directory - See Installation for details**
