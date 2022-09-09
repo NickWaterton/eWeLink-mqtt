@@ -5,6 +5,8 @@ Server Bridge to control Sonoff Devices via MQTT
 **Version 2.0.0**
 Tested on Ubuntu 20.04, Python 3.8.
 
+**NOTE: This is a completely re-written version. The old version (V 1.x) is available in the `old_version` branch, but is no longer maintained as of 9th September 2022**
+
 ## Limitations
 This is a python 3.8 program and uses asyncio. you will need several libraries installed including
 * asyncio
