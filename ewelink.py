@@ -175,7 +175,6 @@ Autoslide device:
 
 import json
 import asyncio
-#import websockets
 from aiohttp import ClientSession, ClientTimeout, ClientConnectorError, WSMessage, ClientWebSocketResponse
 import time
 import sys
@@ -295,7 +294,6 @@ class EwelinkClient(MQTT, XRegistryCloud):
         self._devices = []
         self._clients = {}
         self._parameters = {}  #initial parameters for clients
-        self._configuration = {}
         self._device_classes = {}
         self._load_devices()    
         self.loop = asyncio.get_event_loop()
