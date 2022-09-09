@@ -40,7 +40,7 @@ Current F/W is 2.7 (with no updates for a year or so).
 
 ## Installatiion
 
-## Quick Install
+### Quick Install
 Clone this repository:
 ```
 git clone https://github.com/NickWaterton/eWeLink-mqtt.git
