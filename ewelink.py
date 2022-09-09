@@ -173,20 +173,12 @@ Autoslide device:
   },
 '''
 
-import json
-import asyncio
-from aiohttp import ClientSession, ClientTimeout, ClientConnectorError, WSMessage, ClientWebSocketResponse
-import time
-import sys
-import hmac
-import hashlib
-import base64
-import collections
-import re
-from ewelink_devices import *
-import inspect
 import logging
 from logging.handlers import RotatingFileHandler
+import json, time, sys, hmac, hashlib, base64, collections, re, inspect
+
+import asyncio
+from aiohttp import ClientSession, ClientTimeout, ClientConnectorError, WSMessage, ClientWebSocketResponse
 
 from typing import Callable, Dict, List, Optional, TypedDict
 
@@ -194,6 +186,7 @@ from custom_components.sonoff.core.ewelink.__init__ import XRegistry, SIGNAL_ADD
 from custom_components.sonoff.core.ewelink.base import XRegistryBase, XDevice, SIGNAL_UPDATE, SIGNAL_CONNECTED
 from custom_components.sonoff.core.ewelink.cloud import XRegistryCloud, AuthError, APP
 
+from ewelink_devices import *
 from mqtt import MQTT
 
 _LOGGER = logger = logging.getLogger('Main.'+__name__)
@@ -204,64 +197,6 @@ __version__ = '2.0.0'
 APP.append(('YzfeftUVcZ6twZw1OoVKPRFYTrGEg01Q', '4G91qSoboqYO4Y0XJ0LPPKIsq8reHdfa'))
 # My appId and secret from my AutoslideNet app. can only use with Oauth2 authentication flow, needs to be renewed on 12th July every year
 OAUTH = [('tKjp3XDwekm5NROJ0TgfrvpHjGJnrXiq', 'nEu1HrliSwf1TQCqM7j97onLppK0F1LZ')]
-
-patio_door_device = json.loads('''{ "name": "Patio Door",
-                                    "deviceid": "100050a4f3",
-                                    "apikey": "530303a6-cf2c-4246-894c-50855b00e6d8",
-                                    "extra": {
-                                      "uiid": 54,
-                                      "description": "20180813001",
-                                      "brandId": "5a6fcf00f620073c67efc280",
-                                      "apmac": "d0:27:00:a1:47:37",
-                                      "mac": "d0:27:00:a1:47:36",
-                                      "ui": "\u63a8\u62c9\u5ba0\u7269\u95e8",
-                                      "modelInfo": "5af3f5332c8642b001540dac",
-                                      "model": "PSA-BTA-GL",
-                                      "manufacturer": "\u9752\u5c9b\u6fb3\u601d\u5fb7\u667a\u80fd\u95e8\u63a7\u7cfb\u7edf\u6709\u9650\u516c\u53f8",
-                                      "staMac": "68:C6:3A:D5:9E:E6"
-                                    },
-                                    "brandName": "AUTOSLIDE",
-                                    "brandLogo": "",
-                                    "showBrand": true,
-                                    "productModel": "WFA-1",
-                                    "devConfig": {},
-                                    "settings": {
-                                      "opsNotify": 0,
-                                      "opsHistory": 1,
-                                      "alarmNotify": 1,
-                                      "wxAlarmNotify": 0,
-                                      "wxOpsNotify": 0,
-                                      "wxDoorbellNotify": 0,
-                                      "appDoorbellNotify": 1
-                                    },
-                                    "devGroups": [],
-                                    "family": {
-                                      "familyid": "5f7de770e962cd0007681550",
-                                      "index": -1,
-                                      "members": [
-                                        "0f824698-9928-4d56-8658-1a914f04465a"
-                                      ],
-                                      "roomid": "5f7de770e962cd000768154d"
-                                    },
-                                    "shareTo": [],
-                                    "devicekey": "4123ec79-d2c3-4d32-930a-037ca3b5d0ef",
-                                    "online": true,
-                                    "params": {
-                                      "sledOnline": "off",
-                                      "rssi": -63,
-                                      "fwVersion": "2.7.0",
-                                      "staMac": "68:C6:3A:D5:9E:E6",
-                                      "c": "1",
-                                      "m": "2",
-                                      "n": "0",
-                                      "b": "3",
-                                      "a": "3",
-                                      "j": "00"
-                                    },
-                                    "isSupportGroup": false,
-                                    "isSupportedOnMP": false,
-                                    "deviceFeature": {}
-                                }''')
                                 
 class EwelinkClient(MQTT, XRegistryCloud):
     """A websocket client for connecting to ITEAD's devices."""
@@ -295,7 +230,8 @@ class EwelinkClient(MQTT, XRegistryCloud):
         self._clients = {}
         self._parameters = {}  #initial parameters for clients
         self._device_classes = {}
-        self._load_devices()    
+        self._load_devices() 
+        self._load_custom_devices()
         self.loop = asyncio.get_event_loop()
         
     def _load_devices(self):
@@ -309,6 +245,20 @@ class EwelinkClient(MQTT, XRegistryCloud):
                 self.log.debug('loaded device {}, V:{}, for device models: {}'.format(dev_class[0],dev_class[1].__version__,dev_class[1].productModel))
             except AttributeError:
                 pass
+                
+    def _load_custom_devices(self):
+        '''
+        load custom devices (in this case autoslide device).
+        Put the json output for the device in a file called custom_devices.json, wrapped in a list
+        This is optional, you only need it if your custome device isn't picked up automatically
+        '''
+        try:
+            with open('custom_devices.json', 'r') as f:
+                self._custom_devices = json.load(f)
+                self.log.debug('loaded custom devices: {}'.format(self.pprint(self._custom_devices)))
+        except Exception as e:
+            #self.log.exception(e)
+            self._custom_devices = {}
             
     def _on_connect(self, client, userdata, flags, rc):
         '''
@@ -345,7 +295,7 @@ class EwelinkClient(MQTT, XRegistryCloud):
                         if homes:
                             self._devices = await self.get_devices(homes)
                             self.log.debug('Devices: {}'.format(self.pprint(self._devices)))
-                            self._add_patio_door(arg.poll_interval if arg.poll_interval else 60)
+                            self._add_custom_devices(arg.poll_interval if arg.poll_interval else 60)
                             self._create_client_devices()
                             for device in self._devices:    #initial update
                                 client = self._get_client(device['deviceid'])
@@ -365,17 +315,18 @@ class EwelinkClient(MQTT, XRegistryCloud):
             self.log.exception(e)
         return
         
-    def _add_patio_door(self, poll_interval):
+    def _add_custom_devices(self, poll_interval):
         '''
-        Adds patio Door device if missing.
+        Adds custom devices (eg patio Door device) if missing.
         Some appId/secret combinations only list Sonoff devices, but you can still access other devices
         '''
-        if patio_door_device['deviceid'] not in [device['deviceid'] for device in self._devices]:
-            self.log.info('Adding Patio Door to _devices')
-            self._devices.append(XDevice(patio_door_device))
-            self.log.info('Adding Patio Door to polling task')
-            self.set_initial_parameters(patio_door_device['deviceid'], poll=True)
-            self._start_polling(poll_interval)
+        for custom_device in self._custom_devices:
+            if custom_device['deviceid'] not in [device['deviceid'] for device in self._devices]:
+                self.log.info('Adding {} to _devices'.format(custom_device.get('name', 'unknown')))
+                self._devices.append(XDevice(custom_device))
+                self.log.info('Adding {} to polling task'.format(custom_device.get('name', 'unknown')))
+                self.set_initial_parameters(custom_device['deviceid'], poll=True)
+                self._start_polling(poll_interval)
                     
     def _start_polling(self, poll_interval):
         if 'poll_devices' in self._method_dict.keys():
@@ -853,8 +804,8 @@ if __name__ == "__main__":
     
     poll = None
     if arg.poll_interval and arg.poll_device:
-            log.info(f'Polling {arg.poll_device} every {arg.poll_interval}s')
-            poll = (arg.poll_interval, f'poll_devices')
+        log.info(f'Polling {arg.poll_device} every {arg.poll_interval}s')
+        poll = (arg.poll_interval, 'poll_devices')
     
     loop = asyncio.get_event_loop()
     loop.set_debug(arg.debug)
