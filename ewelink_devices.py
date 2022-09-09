@@ -79,8 +79,6 @@ import asyncio
 import time
 import json
 import datetime
-from jinja2 import Environment, BaseLoader
-from MsgTemplate import MsgTemplate
 
 import logging
 
@@ -123,7 +121,7 @@ class Default():
                      
     timers_supported=[  'delay', 'repeat', 'once', 'duration']
 
-    __version__ = '1.1'
+    __version__ = '2.0'
 
     def __init__(self, parent, deviceid, device, productModel, initial_parameters={}):
         self.logger = logging.getLogger('Main.'+__class__.__name__)
@@ -135,7 +133,6 @@ class Default():
             self.devicekey = device.get('devicekey', None)   #this is the apikey for V3 fw encryption (if not in DIY mode)
         self.loop = asyncio.get_event_loop()
         self._update_settings(self._config)
-        self.load_template()
         self._productModel = productModel   #we are created as this kind of productModel if there is more than one kind of model(one of self.productModel list)
         for param, value in initial_parameters.items():
             pass
@@ -470,28 +467,8 @@ class Default():
         
         return timer
         
-    def load_template(self):
-        # Output state change reporting template.
-        self.pub_topic = MsgTemplate(
-            topic='/ewelink_status/{{deviceid}}/{{param}}',
-            payload='{{value}}',
-            )
-
-        # Input on/off command template.
-        self.msg_on_off = MsgTemplate(
-            topic='/ewelink/{{deviceid}}/{{param}}/set',
-            payload='{ "cmd" : "{{value.lower()}}" }',
-            )
-            
-        # Update the MQTT topics and payloads from the config file.
-        if self._parent._configuration.get('mqtt', None) is not None:
-            self.pub_topic.load_config(self._parent._configuration['mqtt'][self.device_type], 'state_topic', 'state_payload', qos=None)
-        
     def _publish(self, param, value):
-        topic = self.pub_topic.render_topic({'deviceid':self.deviceid, 'name':self.name, 'param':param, 'value':value})
-        #message=self.pub_topic.to_json(value)
-        message = self.pub_topic.render_payload({'deviceid':self.deviceid,'value':value, 'param':param, 'name':self.name})
-        self._parent._publish(self.deviceid, topic, message)
+        self._parent._publish(self.deviceid, param, value)
         
     async def _sendjson(self, message):
         ''' send a dictionary of parameters as a json string '''
@@ -528,6 +505,9 @@ class Default():
 
         self._parent.update(self._config, data)
         self._config['update']=time.time()
+        
+        if self._parent._json_out:
+            self._publish('json', data)
         
         try:
             update = data['params']
@@ -621,7 +601,7 @@ class Autoslide(Default):
                         
     timers_supported=[  'delay', 'repeat']
                            
-    __version__ = '1.1'
+    __version__ = '2.0'
 
     def __init__(self, parent, deviceid, device, productModel, initial_parameters={}):
         self.logger = logging.getLogger('Main.'+__class__.__name__)
@@ -638,7 +618,6 @@ class Autoslide(Default):
         self._mode = None
         self._hold_open_running = False
         self._restore_delay_task = None
-        self.load_template()
         for param, value in initial_parameters.items():
             if param == 'delay_person':
                self._delay_person = value 
@@ -752,6 +731,9 @@ class Autoslide(Default):
 
         self._parent.update(self._config, data)
         self._config['update']=time.time()
+        
+        if self._parent._json_out:
+            self._publish('json', data)
         
         try:
             update = data['params']

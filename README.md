@@ -211,7 +211,7 @@ class PowSwitch(Default):
     
     __version__ = '1.0'
 ```
-And this is typical output from the server log:
+And this is typical output from the server log (in debug mode):
 ```
 [D 2020-04-06 15:35:07,262] (Main.EwelinkClient  ) Received data: {
   "apikey": "530203b6-cf2c-1246-894e-30851b00a6d8",

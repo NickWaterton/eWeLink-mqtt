@@ -277,13 +277,6 @@ class EwelinkClient(MQTT, XRegistryCloud):
                                                         "(?P<day_of_week>\*|[0-6](\-[0-6])?)"
                                                       )
     
-    #NOTE the below (self.APP) is not used, it is simply for testing and debugging
-    APP = [# ("oeVkj2lYFGnJu5XUtWisfW4utiN4u9Mq", "6Nz4n0xA8s8qdxQf2GqurZj2Fs55FUvM"),  #old - no longer works 10/7/22
-            ("KOBxGJna5qkk3JLXw3LHLX3wSNiPjAVi", "4v0sv6X5IM2ASIBiNDj6kGmSfxo40w7n"),   #Working as of 13/7/22
-            ("R8Oq3y0eSZSYdKccHlrQzT1ACCOUT9Gv", "1ve5Qk9GXfUhKAn1svnKwpAlxXkMarru"),   #Does not show Autoslide device, but can still use it (if you know the deviceid)
-            ('YzfeftUVcZ6twZw1OoVKPRFYTrGEg01Q', '4G91qSoboqYO4Y0XJ0LPPKIsq8reHdfa'),   #appId and secret from https://github.com/skydiver/ewelink-api/blob/master/src/data/constants.js
-            ('tKjp3XDwekm5NROJ0TgfrvpHjGJnrXiq', 'nEu1HrliSwf1TQCqM7j97onLppK0F1LZ')    #My appId and secret from my AutoslideNet app. can only use with Oauth2 authentication flow, needs to be renewed on 12th July every year
-          ]
     
     def __init__(self, login=None, passw=None, region='us', log=None, **kwargs):
         self.auth = {'at':''}
@@ -656,7 +649,7 @@ class EwelinkClient(MQTT, XRegistryCloud):
         Update nested dictionaries
         '''
         for k, v in u.items():
-            if isinstance(v, collections.Mapping):
+            if isinstance(v, collections.abc.Mapping):
                 d[k] = self.update(d.get(k, {}), v)
             else:
                 d[k] = v
