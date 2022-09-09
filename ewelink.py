@@ -5,6 +5,7 @@
 see https://github.com/hansharhoff/HASS-sonoff-ewelink for login sequence used
 see https://github.com/AlexxIT/SonoffLAN/blob/master/custom_components/sonoff/core/ewelink/cloud.py for new login sequence (10/7/22)
 also see https://coolkit-technologies.github.io/eWeLink-API/#/en/DeveloperGuideV2
+App ID and secret can be generated/renewed at https://dev.ewelink.cc/#/ when you login (dont forget region), you go to https://dev.ewelink.cc/#/console and click on "View" for your APP.
 N Waterton 11th Jan 2019 V1.0 First release
 N. Waterton 18th April 20201 V 1.2 Updated login method.
 N. Waterton 19th April 20201 V 1.2.1 Added region selector to constructor.
@@ -194,14 +195,16 @@ import re
 import yaml
 from ewelink_devices import *
 import inspect
-
 import logging
+from logging.handlers import RotatingFileHandler
 
 from typing import Callable, Dict, List, Optional, TypedDict
 
 from custom_components.sonoff.core.ewelink.__init__ import XRegistry, SIGNAL_ADD_ENTITIES
 from custom_components.sonoff.core.ewelink.base import XRegistryBase, XDevice, SIGNAL_UPDATE, SIGNAL_CONNECTED
 from custom_components.sonoff.core.ewelink.cloud import XRegistryCloud, AuthError, APP
+
+from mqtt import MQTT
 
 _LOGGER = logger = logging.getLogger('Main.'+__name__)
 
@@ -269,8 +272,8 @@ patio_door_device = json.loads('''{ "name": "Patio Door",
                                     "isSupportedOnMP": false,
                                     "deviceFeature": {}
                                 }''')
-
-class EwelinkClient(XRegistryCloud):
+                                
+class EwelinkClient(MQTT, XRegistryCloud):
     """A websocket client for connecting to ITEAD's devices."""
     
     __version__ = __version__
@@ -282,7 +285,8 @@ class EwelinkClient(XRegistryCloud):
                                                         "(?P<month>\*|0?[1-9]|1[012])",
                                                         "(?P<day_of_week>\*|[0-6](\-[0-6])?)"
                                                       )
-                                                      
+    
+    #NOTE the below (self.APP) is not used, it is simply for testing and debugging
     APP = [# ("oeVkj2lYFGnJu5XUtWisfW4utiN4u9Mq", "6Nz4n0xA8s8qdxQf2GqurZj2Fs55FUvM"),  #old - no longer works 10/7/22
             ("KOBxGJna5qkk3JLXw3LHLX3wSNiPjAVi", "4v0sv6X5IM2ASIBiNDj6kGmSfxo40w7n"),   #Working as of 13/7/22
             ("R8Oq3y0eSZSYdKccHlrQzT1ACCOUT9Gv", "1ve5Qk9GXfUhKAn1svnKwpAlxXkMarru"),   #Does not show Autoslide device, but can still use it (if you know the deviceid)
@@ -290,170 +294,148 @@ class EwelinkClient(XRegistryCloud):
             ('tKjp3XDwekm5NROJ0TgfrvpHjGJnrXiq', 'nEu1HrliSwf1TQCqM7j97onLppK0F1LZ')    #My appId and secret from my AutoslideNet app. can only use with Oauth2 authentication flow, needs to be renewed on 12th July every year
           ]
     
-    def __init__(self, phoneNumber=None,email=None, password=None, loop=None, mqttc=None, pub_topic='/ewelink_status/', region='us', configuration_file=None):
-        #super().__init__(session)
-        self._region = region
-        self.logger = logging.getLogger('Main.'+__class__.__name__)
+    def __init__(self, login=None, passw=None, region='us', log=None, **kwargs):
+        self.auth = {'at':''}
+        MQTT.__init__(self, log=log, **kwargs)
+        self.log = log
+        if self.log is None:
+            self.log = logging.getLogger('Main.'+__class__.__name__)
         global _LOGGER
-        _LOGGER = self.logger
-        self.logger.debug('Started Class: %s, version: %s' % (__class__.__name__,self.__version__))
-        self.wsc_url = None
-        self.apikey = 'UNCONFIGURED'
-        self.authenticationToken = 'UNCONFIGURED'
-        self.poll = False
-
+        _LOGGER = self.log
+        self.log.debug('Started Class: %s, version: %s' % (__class__.__name__,self.__version__))
+        self._username = login
+        self._passw = passw
+        self._region = region
         self._match_iso8601 = re.compile(self._ISOregex).match
         self._match_cron = re.compile(self._cronregex).match
-        
         self._devices = []
         self._clients = {}
         self._parameters = {}  #initial parameters for clients
-        self.app_key = 0
-        #client initialization parameters
         self._configuration = {}
-        self._phoneNumber, self._email, self._password, self._region, self._pub_topic = self.get_initialization_parameters(configuration_file, phoneNumber, email, password, region, pub_topic)
-        
-        if self._password is None or (self._phoneNumber is None and self._email is None) :
-            self.logger.error('phone number/email or password cannot be empty')
-            sys.exit(1)
-        
-        self._mqttc = mqttc
-        if self._mqttc:
-            self._mqttc.on_message = self._on_message
-            #self._pub_topic = pub_topic
         self._device_classes = {}
+        self._load_devices()    
+        self.loop = asyncio.get_event_loop()
+        
+    def _load_devices(self):
+        '''
+        Load device classes
+        '''
         clsmembers = inspect.getmembers(sys.modules[__name__], inspect.isclass) #get devices loaded from modules
         for dev_class in clsmembers:
             try:
                 self._device_classes[dev_class[1]] = dev_class[1].productModel
-                self.logger.debug('loaded device %s, V:%s, for device models: %s' % (dev_class[0],dev_class[1].__version__,dev_class[1].productModel))
+                self.log.debug('loaded device {}, V:{}, for device models: {}'.format(dev_class[0],dev_class[1].__version__,dev_class[1].productModel))
             except AttributeError:
-                pass    
-        
-        if not loop:
-            self.loop = asyncio.get_event_loop()
-            if not self.loop.is_running():
-                #run login in another thread, otherwise client blocks
-                from threading import Thread
-                self.t = Thread(target=self.loop.run_until_complete, args=(self.login(),))
-                self.t.start()
-                
-                if sys.platform != 'win32':     #linux only stuff
-                    import signal
-                    for signame in ('SIGINT', 'SIGTERM'):
-                        self.loop.add_signal_handler(getattr(signal, signame),self.disconnect)
-        else:
-            self.loop = loop
+                pass
             
-    def get_initialization_parameters(self, file, phoneNumber, email, password, region, pub_topic):
-        if file:
-            if self.load_config(file):
-                my_phoneNumber = self._configuration['log_in'].get('phoneNumber', phoneNumber)
-                my_email       = self._configuration['log_in'].get('email',email)
-                my_password    = self._configuration['log_in'].get('password',password)
-                my_region      = self._configuration['log_in'].get('region',region)
-                my_pub_topic   = self._configuration['mqtt'].get('pub_topic',pub_topic)
-                
-                if my_phoneNumber is None:
-                    my_phoneNumber = phoneNumber
-                if my_email is None:
-                    my_email = email
-                if my_password is None:
-                    my_password = password
-                if my_region is None:
-                    my_region = region
-                if my_pub_topic is None:
-                    my_pub_topic = pub_topic
-                    
-                return my_phoneNumber, my_email, my_password, my_region, my_pub_topic 
-                
-        return phoneNumber, email, password, region, pub_topic  
-        
-    def load_config(self, file):
-        with open(file, 'r') as stream:
-            try:
-                self._configuration = yaml.load(stream)
-                return True
-            except yaml.YAMLError as e:
-                self.logger.exception(e)
-                return False
+    def _on_connect(self, client, userdata, flags, rc):
+        '''
+        Override Normal MQTT class on_connect(), to subscribe to correct topic
+        '''
+        self._log.info('MQTT broker connected')
+        self.subscribe('{}/#'.format(self._topic))
+        self._history = {}
             
     def pprint(self,obj):
         """Pretty JSON dump of an object."""
         return(json.dumps(obj, sort_keys=True, indent=2, separators=(',', ': ')))
         
-    @property
-    def devices(self):
-        return self._devices
-        
     def get_config(self, deviceid = ''):
-        if deviceid:
-            client = self._get_client(deviceid)
-            return client.config
-        else:
-            device_list = []
-            for client in self._clients.values():
-               device_list.append(client.config)
-        return device_list
+        return self._get_client(deviceid).config if deviceid else [client.config for client in self._clients.values()]
         
     def set_initial_parameters(self, deviceid, **kwargs):
         '''
         set initial parameters for client
         '''
-        if deviceid == 'default':
-            deviceid = '0'
         self._parameters[deviceid] = kwargs
         
-    async def start_connection(self, app=0, oauth=False):
-        username = self._email if self._email else self._phoneNumber
-        password = self._password
+    async def start_connection(self, arg):
         try:
-            async with ClientSession(timeout=ClientTimeout(total=5.0)) as session:
-                super().__init__(session)
-                self.region = self._region
-                if oauth:
-                    APP.extend(OAUTH)
-                if app > len(APP)-1:
-                    self.logger.warning('Selected appId({}) index out of range (max{}), using 0'.format(app, len(APP)-1))
-                    app = 0
-                self.app_key = app
-                self.logger.info('Connecting, login: {}, password: {}, appid({}): {}'.format(username, password, 'Oauth2' if oauth else 'v2', APP[app]))
-                if oauth:
-                    connected = await self.oauth_login(username, password, app)
-                else:
-                    connected = await self.login(username, password, app)
-                
-                if connected:
-                    self.logger.info('Connected: auth: {}'.format(json.dumps(self.auth, indent=2)))
-                    homes = await self.get_homes()
-                    self.logger.info('Homes: {}'.format(json.dumps(homes, indent=2)))
-                    if homes:
-                        self._devices = await self.get_devices(homes)
-                        self.logger.info('Devices: {}'.format(json.dumps(self._devices, indent=2)))
-                        if patio_door_device['deviceid'] not in [device['deviceid'] for device in self._devices]:
-                            self.logger.info('Adding Patio Door to _devices')
-                            self._devices.append(XDevice(patio_door_device))
-                            self.poll = True
-                        if self._devices:
+            while True:
+                async with ClientSession(timeout=ClientTimeout(total=5.0)) as session:
+                    XRegistryCloud.__init__(self, session)
+                    self.region = self._region
+                    
+                    if await self._login(self._username, self._passw, arg.appid, arg.oauth):
+                        self.log.debug('Connected: auth: {}'.format(self.pprint(self.auth)))
+                        homes = await self.get_homes()
+                        self.log.debug('Homes: {}'.format(self.pprint(homes)))
+                        if homes:
+                            self._devices = await self.get_devices(homes)
+                            self.log.debug('Devices: {}'.format(self.pprint(self._devices)))
+                            self._add_patio_door(arg.poll_interval if arg.poll_interval else 60)
                             self._create_client_devices()
-                            self.logger.info('Started WS receive - waiting for messages')
+                            for device in self._devices:    #initial update
+                                client = self._get_client(device['deviceid'])
+                                client._handle_notification(device)
+                            self.log.info('Starting WS receive - waiting for messages')
                             self.start()
-                            count = 0
-                            while not self.online and count < 5:
-                                await asyncio.sleep(1)
-                                count += 1
-                            count = 0
-                            while self.online:
-                                self.logger.debug('Waiting...')
-                                await asyncio.sleep(60)
-                                if self.poll:
-                                    await self.send(patio_door_device['deviceid'])
-                else:
-                    self.logger.error('Failed to login')
+                            if await self._wait_for_WS(5):
+                                await self._loop_while_online()
+                            else:
+                                self.log.error('Unable to connect to WS, retry in 60 seconds')
+                    else:
+                        self.log.warning('auth: {}'.format(self.pprint(self.auth)))
+                        self.log.error('Failed to login, retry in 60 seconds')
+                await asyncio.sleep(60)
         
         except Exception as e:
-            self.logger.exception(e)
+            self.log.exception(e)
         return
+        
+    def _add_patio_door(self, poll_interval):
+        '''
+        Adds patio Door device if missing.
+        Some appId/secret combinations only list Sonoff devices, but you can still access other devices
+        '''
+        if patio_door_device['deviceid'] not in [device['deviceid'] for device in self._devices]:
+            self.log.info('Adding Patio Door to _devices')
+            self._devices.append(XDevice(patio_door_device))
+            self.log.info('Adding Patio Door to polling task')
+            self.set_initial_parameters(patio_door_device['deviceid'], poll=True)
+            self._start_polling(poll_interval)
+                    
+    def _start_polling(self, poll_interval):
+        if 'poll_devices' in self._method_dict.keys():
+            if not self._poll:
+                self.log.info('Creating polling task, poll every {} seconds'.format(poll_interval))
+                self._poll = poll_interval
+                self._polling = ['poll_devices']
+                self._tasks['_poll_status'] = self._loop.create_task(self._poll_status())
+            elif not 'poll_devices' in self._polling:
+                self._polling.append('poll_devices')
+        else:
+            self.log.warning('Unable to poll devices')
+            
+    async def _wait_for_WS(self, timeout):
+        count = 0
+        while count <= timeout:
+            if self.online:
+                return True
+            await asyncio.sleep(1)
+            count += 1
+        return False
+        
+    async def _loop_while_online(self):
+        count = 55
+        while self.online:
+            count += 1
+            if count >= 60:
+                self.log.debug('Waiting...')
+                count = 0
+            await asyncio.sleep(1)
+        
+    async def _login(self, username: str, password: str, app=0, oauth=False) -> bool:
+        if oauth:
+            APP.extend(OAUTH)
+        self.log.debug('Available App ID, secrets: {}'.format(self.pprint(APP)))
+        if arg.appid > len(APP)-1:
+            self.log.warning('Selected appId({}) index out of range (max{}), using 0'.format(arg.appid, len(APP)-1))
+            arg.appid = 0
+        self.log.info('Connecting, login: {}, password: {}, appid({}): {}'.format(username, password, 'Oauth2' if oauth else 'v2', APP[app]))
+        if arg.oauth:
+            return await self.oauth_login(username, password, app)
+        return await self.login(username, password, app)
         
     async def oauth_login(self, username: str, password: str, app=0) -> bool:
         self._publish('client', 'status', "Starting")
@@ -511,217 +493,159 @@ class EwelinkClient(XRegistryCloud):
         return True
         
     async def login(self, username: str, password: str, app=0) -> bool:
-        return await super().login(username, password, app)
+        return await XRegistryCloud.login(self, username, password, app)
                 
     async def _process_ws_msg(self, data: dict):
-        self.logger.debug(f"RECEIVED cloud msg: {self.pprint(data)}")
-        await super()._process_ws_msg(data)
+        self.log.debug(f"RECEIVED cloud msg: {self.pprint(data)}")
+        await XRegistryCloud._process_ws_msg(self, data)
         
-        #self.logger.debug("Received data: %s" % self.pprint(data))
+        #self.log.debug("Received data: %s" % self.pprint(data))
         deviceid = data.get('deviceid', None)
-        self._publish('device', '{}/json'.format(deviceid), json.dumps(data))
-                
-        if data.get('error', None) is not None:
-            if deviceid:
-                if data['error'] == 0:
-                    self.logger.debug('command completed successfully')
-                    self._publish('device', '{}/status'.format(deviceid), "OK")
-                else:
-                    self.logger.warn('error: %s' % self.pprint(data))
-                    self._publish('device', '{}/status'.format(deviceid), "Error: " + data.get('reason','unknown'))
-                    self._update_config = False
-
         if deviceid:
+            self._publish(deviceid, 'json', json.dumps(data))
+
+            if data.get('error', None) is not None:
+                if data['error'] == 0:
+                    self.log.debug('command completed successfully')
+                    self._publish(deviceid, 'status', "OK")
+                else:
+                    self.log.warning('error: %s' % self.pprint(data))
+                    self._publish(deviceid, 'status', "Error: " + data.get('reason','unknown'))
+                    return
+
             client = self._get_client(deviceid)
             if client:
                 client._handle_notification(data)
     
     def _validate_iso8601(self,str_val):
         try:            
-            if self._match_iso8601( str_val ) is not None:
-                return True
+            return True if self._match_iso8601( str_val ) is not None else False
         except:
             pass
         return False
         
     def _validate_cron(self,str_val):
         try:            
-            if self._match_cron( str_val ) is not None:
-                return True
+            return True if self._match_cron( str_val ) is not None else False  
         except:
             pass
         return False
-    
-    def _on_message(self, mosq, obj, msg):
-        self.logger.debug("CLIENT: message received topic: %s" % msg.topic)
+        
+    def _get_command(self, msg):
+        '''
+        extract command and args from MQTT msg
+        '''
+        self.log.debug("CLIENT: message received topic: %s" % msg.topic)
         #log.info("message topic: %s, value:%s received" % (msg.topic,msg.payload.decode("utf-8")))
         command = msg.topic.split('/')[-1]
-        deviceid = msg.topic.split('/')[-2]
+        deviceid = self.get_deviceid(msg.topic.split('/')[-2])
         message = msg.payload.decode("utf-8").strip()
-        self.logger.info("CLIENT: Received Command: %s, device: %s, Setting: %s" % (command, deviceid, message))
+        self.log.info("CLIENT: Received Command: %s, device: %s, Setting: %s" % (command, deviceid, message))
+        func = None
         
-        if 'reconnect' in command:
-            func = self._reconnect()
-        else:
-            client = self._get_client(deviceid)
-            func = client.q.put((command, message))
-               
-        #have to use this as mqtt client is running in another thread...
-        asyncio.run_coroutine_threadsafe(func,self.loop)
+        if deviceid:
+            if 'reconnect' in command:
+                if message == 'ON':
+                    func = self.disconnect()
+            else:
+                client = self._get_client(deviceid)
+                func = client.q.put((command, message))
+                
+            #have to use this as mqtt client is running in another thread...
+            if func:
+                asyncio.run_coroutine_threadsafe(func,self.loop)
+            
+        return None, None
+        
+    async def _publish_command(self, command, args=None):
+        pass
         
     def _publish(self, deviceid, topic, message):
         '''
         mqtt _publish
         '''
-        if self._mqttc is None:
-            self.logger.debug('No MQTT client configured')
-            return
-        if deviceid is None:
-            return
-        elif deviceid == 'client':
-            new_topic = self._pub_topic+deviceid+'/'+topic
-        elif deviceid == 'device':
-            new_topic = self._pub_topic+topic
-        else:
-            new_topic = topic #new template system passes full topic directly.
-        try:
-            if isinstance(message, (dict,list)):
-                message = json.dumps(message)
-            self._mqttc.publish(new_topic, message)
-            self.logger.info('published: %s: %s' % (new_topic, message))
-        except TypeError as e:
-            self.logger.warn('Unable to _publish: %s:%s, %s' % (topic,message,e))
+        #self._log.info('MQTT PUBLISH, deviceid: {}, topic: {}, message: {}'.format(deviceid, topic, message))
+        if deviceid in topic:
+            topic = topic.split('/')[-1]
+        MQTT._publish(self, f'{deviceid}/{topic}', message)
         
     def _create_client_devices(self):
         '''
         Create client devices
         '''
         for device in self._devices:
-            found = False
-            deviceid = device.get('deviceid', None)
+            deviceid = device['deviceid']
+            model = device['productModel']
             device_name = device.get('name', None)
-            if not deviceid:
-                self.logger.error('Device id not found!')
-                return
-
-            for device_id, params in self._parameters.items():
-                real_deviceid = self.get_deviceid(device_id)
-                if real_deviceid == deviceid:
-                    initial_parameters = params
-                    break
-            else:
-                initial_parameters = {}
                 
-            for client_class, productModels in self._device_classes.items():
-                for productModel in productModels:
-                    if device["productModel"] == productModel:
-                        self._clients[deviceid] = client_class(self, deviceid, device, productModel, initial_parameters)
-                        self.logger.debug('Created instance of Device: %s, model: %s for: %s (%s)' % (client_class.__name__, productModel, deviceid, device_name))
-                        found = True
-                        break
-                        
-            if not found:
-                self.logger.warn('Unsupported device: %s, using Default device' % device["productModel"])
+            initial_parameters = self._parameters.get(deviceid, {})
+            
+            client_class = [client_class for client_class, productModels in self._device_classes.items() for productModel in productModels if model == productModel]
+            if client_class:
+                #assign first matching class
+                self._clients[deviceid] = client_class[0](self, deviceid, device, model, initial_parameters)          
+            else:
+                self.log.warning('Unsupported device: {}, using Default device'.format(device["productModel"]))
                 self._clients[deviceid] = Default(self, deviceid, device, device["productModel"], initial_parameters)
-                self.logger.debug('Created instance of Device: %s, model: %s for: %s (%s)' % (self._clients[deviceid].__class__.__name__, device["productModel"], deviceid, device_name))
+            self.log.info('Created instance of Device: {}, model: {} for: {} ({})'.format(self._clients[deviceid].__class__.__name__, model, deviceid, device_name))
                 
         if len(self._clients) == 0:
-            self.logger.critical('NO SUPPORTED DEVICES FOUND')
-
-    async def _disconnect(self, send_close=None):
-        """Disconnect from Websocket"""
-        self.logger.debug('Disconnecting')
-        for deviceid, client in self._clients.items():
-            if client is not None:
-                self.logger.debug('waiting for client %s to exit: %s' % (client,client.deviceid))
-                await client.q.put((None,None))
-                await client.q.join()
-                self._clients[deviceid]=None
-        self._publish('client', 'status', "Disconnected")
-        await self.stop()
+            self.log.critical('NO SUPPORTED DEVICES FOUND')
+        
+    async def poll_devices(self):
+        for device in self._devices:
+            if self._parameters.get(device['deviceid'], {}).get('poll'):
+                self.log.info('Polling device: {}'.format(device['deviceid']))
+                await self._getparameter(device['deviceid'])
+        return {}   #return dict is expected
         
     async def _send_request(self, command, waitResponse=False):
         """Send a payload request to websocket"""
-        self.logger.debug("Sending command: {}".format(command))
+        self.log.debug("Sending command: {}".format(command))
         timeout = 0 if not waitResponse else 5
-        return await self.send(command.get('device'), command.get('params'), timeout=timeout)  
+        result = await self.send(command.get('device'), command.get('params'), timeout=timeout)
+        if result:
+            self.log.debug('Send response is: {}'.format(result))
+            if result == 'timeout':
+                device = command.get('device', {})
+                self.log.warning('Device: {}({}) is not updating'.format(device.get('deviceid'), device.get('name')))
+        return result
         
     async def _sendjson(self, deviceid, message):
         """Send a json payload direct to device"""
-
         try:
             params = json.loads(message.replace("'",'"'))
-            payload = {}
-            payload['params'] = params
-            payload['device'] = self.get_config(deviceid)
-     
-            #self.logger.debug('sending JSON: {}'.format(self.pprint(payload)))
-
+            payload = {'params':params, 'device':self.get_config(deviceid)}
+            #self.log.debug('sending JSON: {}'.format(self.pprint(payload)))
             await self._send_request(payload)
-            
-            if deviceid == patio_door_device['deviceid']:
-                await asyncio.sleep(1)
-                await self._getparameter(deviceid)
-        
+
         except json.JSONDecodeError as e:
-            self.logger.error('json encoding error inmessage: %s: %s' % (message,e))
+            self.log.error('json encoding error inmessage: %s: %s' % (message,e))
         
-    async def _getparameter(self, sel_device='', params=[], waitResponse=False):
-        self._update_config = False
+    async def _getparameter(self, device_id='', params=[], waitResponse=False):
+        deviceid = self.get_deviceid(str(device_id))
+        if deviceid:
+            self.log.debug('Getting params: for device [{}]'.format(self.get_devicename(deviceid)))
+            payload = {'device':self.get_config(deviceid)}
+            await self._send_request(payload, waitResponse)
+        else:
+            self.log.error(f'device {device_id} not found')
         
-        updated = 0
-        device_id = None
-        
-        if sel_device:
-            device_id = self.get_deviceid(str(sel_device))
-            if not device_id:
-                self.logger.error('device %s not found' % sel_device)
-                return
-        
-        for num, device in enumerate(self._devices):
-            if not sel_device or device['deviceid'] == device_id:
-                updated+=1
-                deviceid = device['deviceid']
-
-                self.logger.debug("Getting params: for device [%s]" % (device['name']))
-
-                payload = {}
-                payload['device'] = self.get_config(deviceid)
-
-                #self.logger.debug('sending: {}'.format(self.pprint(payload)))
-
-                await self._send_request(payload, waitResponse)
-                
-        if updated == 0:
-            self.logger.warn('device not found: %s' % sel_device)
-        
-    async def _setparameter(self, sel_device, param, targetState, update_config=True, waitResponse=False):
+    async def _setparameter(self, device_id, param, targetState, update_config=True, waitResponse=False):
         '''
         sends either a single parameter to the device, or a dictionary of multiple parameters.
         '''
-        #self.logger.debug('PARENT setting parameter: %s, to %s for %s' % (param, targetState, sel_device))
-        
-        deviceid = self.get_deviceid(sel_device)
-        if not deviceid:
-            self.logger.error('device %s not found' % sel_device)
-            return    
+        deviceid = self.get_deviceid(device_id)   
+        if deviceid:
+            params = {param:targetState}
+                
+            self.log.debug('Setting param: {} to [{}] for device [{}]'.format(param, targetState, self.get_devicename(deviceid)))
+            waitResponse = True if deviceid == patio_door_device['deviceid'] else waitResponse
 
-        params = {param:targetState}
-            
-        self.logger.debug("Setting param: %s to [%s] for device [%s]" % (param, targetState, self.get_devicename(deviceid)))
-
-        payload = {}
-        payload['params'] = params
-        payload['device'] = self.get_config(deviceid)
-
-        #self.logger.debug('sending: {}'.format(self.pprint(payload)))
-
-        await self._send_request(payload, waitResponse)
-        
-        if update_config or deviceid == patio_door_device['deviceid']:
-            await asyncio.sleep(1)
-            self.logger.debug('GETTING parameters for: {}'.format(deviceid))
-            await self._getparameter(deviceid)
+            payload = {'params':params, 'device':self.get_config(deviceid)}
+            await self._send_request(payload, waitResponse)
+        else:
+            self.log.error(f'device {device_id} not found')
         
     def get_deviceid(self, sel_device=0):
         deviceid = None
@@ -748,18 +672,248 @@ class EwelinkClient(XRegistryCloud):
         return d
         
     def get_devicename(self, deviceid=None):
-        client = self._get_client(deviceid)
-        return client.name
+        return self._get_client(deviceid).name
         
     def _get_client(self, deviceid):
         deviceid = self.get_deviceid(deviceid)
-        client = self._clients.get(deviceid, None)
-        return client
+        return self._clients.get(deviceid, None)
         
     def send_command(self, deviceid, command, message):
-        client = self._get_client(deviceid)
-        client.send_command(command, message)
+        '''
+        Only used for command line (API) options, not strictly necessary if only mqtt is used, but uses the same format as mqtt
+        '''
+        self._get_client(deviceid).send_command(command, message)
+        
+    async def _disconnect(self, send_close=None):
+        """Disconnect from Websocket and delete clients"""
+        self.log.debug('Disconnecting')
+        for deviceid, client in self._clients.items():
+            if client is not None:
+                #self.log.debug('waiting for client %s to exit: %s' % (client,client.deviceid))
+                await client.q.put((None,None))
+                await client.q.join()
+                self._clients.pop(deviceid, None)
+        self._publish('client', 'status', "Disconnected")
+        await self.stop()
+        await self.ws.close()
+        self.log.info('Disconnected')
             
     def disconnect(self):
         asyncio.run_coroutine_threadsafe(self._disconnect(),self.loop)
+        
+def parse_args():
+    
+    #-------- Command Line -----------------
+    parser = argparse.ArgumentParser(
+        description='Forward MQTT data to Ewelink API')
+    parser.add_argument(
+        'login',
+        action='store',
+        type=str,
+        default=None,
+        help='Ewelink login (e-mail or phone number) (default: %(default)s)')
+    parser.add_argument(
+        'password',
+        action='store',
+        type=str,
+        default=None,
+        help='Ewelink password (default: %(default)s)')
+    parser.add_argument(
+        '-r', '--region',
+        action='store',
+        type=str,
+        choices=['us', 'cn', 'eu', 'as'],
+        default='us',
+        help='Region (default: %(default)s)')
+    parser.add_argument(
+        '-a', '--appid',
+        action='store',
+        type=int,
+        default=0,
+        help='AppID to use (default: %(default)s)')
+    parser.add_argument(
+        '-O', '--oauth',
+        action='store_true',
+        default = False,
+        help='Use Oauth2 login (vs v2 login) (default: %(default)s)')
+    parser.add_argument(
+        '-t', '--topic',
+        action='store',
+        type=str,
+        default="/ewelink_command/",
+        help='MQTT Topic to send commands to, (can use # '
+             'and +) default: %(default)s)')
+    parser.add_argument(
+        '-T', '--feedback',
+        action='store',
+        type=str,
+        default="/ewelink_status",
+        help='Topic on broker to publish feedback to (default: '
+             '%(default)s)')
+    parser.add_argument(
+        '-b', '--broker',
+        action='store',
+        type=str,
+        default=None,
+        help='ipaddress of MQTT broker (default: %(default)s)')
+    parser.add_argument(
+        '-p', '--port',
+        action='store',
+        type=int,
+        default=1883,
+        help='MQTT broker port number (default: %(default)s)')
+    parser.add_argument(
+        '-U', '--user',
+        action='store',
+        type=str,
+        default=None,
+        help='MQTT broker user name (default: %(default)s)')
+    parser.add_argument(
+        '-P', '--passwd',
+        action='store',
+        type=str,
+        default=None,
+        help='MQTT broker password (default: %(default)s)')
+    parser.add_argument(
+        '-poll', '--poll_interval',
+        action='store',
+        type=int,
+        default=0,
+        help='Polling interval (seconds) (0=off) (default: %(default)s)')
+    parser.add_argument(
+        '-pd', '--poll_device',
+        nargs='*',
+        action='store',
+        type=str,
+        default=None,
+        help='Poll deviceID (default: %(default)s)')
+    parser.add_argument(
+        '-d', '--device',
+        action='store',
+        type=str,
+        default='100050a4f3',
+        help='deviceID (default: %(default)s)')
+    parser.add_argument(
+        '-dp', '--delay_person',
+        action='store',
+        type=int,
+        default=None,
+        help='Delay in seconds for person trigger (default: %(default)s)')
+    parser.add_argument(
+        '-l', '--log',
+        action='store',
+        type=str,
+        default="./ewelink.log",
+        help='path/name of log file (default: %(default)s)')
+    parser.add_argument(
+        '-J', '--json_out',
+        action='store_true',
+        default = False,
+        help='publish topics as json (vs individual topics) (default: %(default)s)')
+    parser.add_argument(
+        '-D', '--debug',
+        action='store_true',
+        default = False,
+        help='debug mode')
+    parser.add_argument(
+        '--version',
+        action='version',
+        version="%(prog)s ({})".format(__version__),
+        help='Display version of this program')
+    return parser.parse_args()
+    
+def setuplogger(logger_name, log_file, level=logging.DEBUG, console=False):
+    try: 
+        l = logging.getLogger(logger_name)
+        formatter = logging.Formatter('[%(asctime)s][%(levelname)5.5s](%(name)-20s) %(message)s')
+        if log_file is not None:
+            fileHandler = logging.handlers.RotatingFileHandler(log_file, mode='a', maxBytes=10000000, backupCount=10)
+            fileHandler.setFormatter(formatter)
+        if console == True:
+            #formatter = logging.Formatter('[%(levelname)1.1s %(name)-20s] %(message)s')
+            streamHandler = logging.StreamHandler()
+            streamHandler.setFormatter(formatter)
+
+        l.setLevel(level)
+        if log_file is not None:
+            l.addHandler(fileHandler)
+        if console == True:
+          l.addHandler(streamHandler)
+             
+    except Exception as e:
+        print("Error in Logging setup: %s - do you have permission to write the log file??" % e)
+        sys.exit(1)
+            
+if __name__ == "__main__":
+    import argparse
+    arg = parse_args()
+    
+    if arg.debug:
+        log_level = logging.DEBUG
+    else:
+        log_level = logging.INFO
+
+    #setup logging
+    log_name = 'Main'
+    setuplogger(log_name, arg.log, level=log_level,console=True)
+
+    log = logging.getLogger(log_name)
+
+    log.info("*******************")
+    log.info("* Program Started *")
+    log.info("*******************")
+    
+    log.debug('Debug Mode')
+
+    log.info("{} Version: {}".format(sys.argv[0], __version__))
+
+    log.info("Python Version: {}".format(sys.version.replace('\n','')))
+    
+    poll = None
+    if arg.poll_interval and arg.poll_device:
+            log.info(f'Polling {arg.poll_device} every {arg.poll_interval}s')
+            poll = (arg.poll_interval, f'poll_devices')
+    
+    loop = asyncio.get_event_loop()
+    loop.set_debug(arg.debug)
+    try:
+        if arg.broker:
+            r = EwelinkClient(  arg.login,
+                                arg.password,
+                                arg.region,
+                                ip=arg.broker,
+                                port=arg.port,
+                                user=arg.user,
+                                password=arg.passwd,
+                                pubtopic=arg.feedback,
+                                topic=arg.topic,
+                                name=None,
+                                poll=poll,
+                                json_out=arg.json_out,
+                                #log=log
+                                )
+            if arg.device:
+                r.set_initial_parameters(arg.device, delay_person=arg.delay_person)
+            if poll:
+                for device in arg.poll_device:
+                    r.set_initial_parameters(device, poll=True)
+            asyncio.gather(r.start_connection(arg), return_exceptions=True)
+            loop.run_forever()
+        else:
+            r = EwelinkClient(arg.login, arg.password, arg.region, log=log)
+            if arg.device:
+                r.set_initial_parameters(arg.device, delay_person=arg.delay_person)
+            if poll:
+                for device in arg.poll_device:
+                    r.set_initial_parameters(device, poll=True)
+            log.info(loop.run_until_complete(r.start_connection(arg)))
+            
+    except (KeyboardInterrupt, SystemExit):
+        log.info("System exit Received - Exiting program")
+        if arg.broker:
+            r.disconnect()
+        
+    finally:
+        pass
+
         
