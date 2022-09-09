@@ -2,19 +2,20 @@
 Server Bridge to control Sonoff Devices via MQTT
 **This uses Sonoff stock firmware, no flashing required.**
 
-**Version 1.2**
-Tested on Ubuntu 18.04, Python 3.6.
+**Version 2.0.0**
+Tested on Ubuntu 20.04, Python 3.8.
 
 ## Limitations
-This is a python 3.6 program and uses asyncio. you will need several libraries installed including
+This is a python 3.8 program and uses asyncio. you will need several libraries installed including
 * asyncio
 * paho-mqtt
-* websockets
 * aiohttp
 * zeroconf
-* yaml  __note: yaml is not actually used, but some experimental code is in there....__
 
-I have only verified that e-mail logins works, and can only test the North America region *(eu region has also been tested now)*.
+The eWelink authentication is based on the Home-Assistant SonoffLAN custom component. https://github.com/AlexxIT/SonoffLAN
+**You Need to download this custom component to the eWeLink-mqtt directory - See Installation for details**
+
+I have only verified that e-mail logins works.
 
 **NOTE:**
 The server only supports one eWeLink account where you can connect using your app email and password, or in place of the email you can use your 
@@ -34,6 +35,28 @@ I do find that the Autoslide Controller goes off line from time to time, but you
 it's the feedback that seems to be the problem. Power cycling the door controller fixes it, but I'm hoping for an updated firmware from Autoslide (or Itead) to fix it.
 Current F/W is 2.7 (with no updates for a year or so).
 
+## Installatiion
+Clone this repository:
+```
+git clone https://github.com/NickWaterton/eWeLink-mqtt.git
+```
+Clone SonoffLAN:
+```
+git clone https://github.com/AlexxIT/SonoffLAN.git
+```
+or download a release from https://github.com/AlexxIT/SonoffLAN/releases
+Copy the `custom_components` directory from SonoffLAN to eWeLink-mqtt:
+```
+cp -R SonoffLAN/custom_components eWeLink-mqtt
+```
+cd to eWeLink-mqtt:
+```
+cd eWeLink-mqtt
+```
+The server can be run by running `./ewelink.py` now.
+
+To update the `custom_components` directory, change to the `SonoffLAN` directory, and run `git pull`. Now copy the `custom_components` directory to `eWeLink-mqtt` as described above.
+
 ## Supported Devices
 I included support for a number of basic devices, such as:
 * Basic,Basic2 Switches
@@ -46,80 +69,64 @@ I included support for a number of basic devices, such as:
 Anything not on this list will get added as a Basic switch (ie you get on and off control and feedback).
 
 ## Starting The Server
-Command to run is `ewelink_server.py`
+Command to run is `ewelink.py`
 
 ```
-nick@MQTT-Servers-Host:~/Scripts/ewelink$ ./ewelink_server.py -h
-usage: ewelink_server.py [-h] (-ph PHONE | -em EMAIL | -cf CONFIG)
-                         [-P E_PASSWORD] [-i IMEI] [-r REGION] [-d DEVICE]
-                         [-dp DELAY_PERSON] [-b BROKER] [-p PORT] [-u USER]
-                         [-pw PASSWORD] [-pt PUB_TOPIC] [-st SUB_TOPIC]
-                         [-l LOG] [-D] [-V]
-                         {get_config,door_trigger,set_mode,set_option,send_command}
-                         ...
+nick@MQTT-Servers-Host:~/Scripts/eWeLink-mqtt$ ./ewelink.py -h
+usage: ewelink.py [-h] [-r {us,cn,eu,as}] [-a APPID] [-O] [-t TOPIC] [-T FEEDBACK] [-b BROKER] [-p PORT] [-U USER]
+                  [-P PASSWD] [-poll POLL_INTERVAL] [-pd [POLL_DEVICE [POLL_DEVICE ...]]] [-d DEVICE]
+                  [-dp DELAY_PERSON] [-l LOG] [-J] [-D] [--version]
+                  login password
 
-EweLink MQTT-WS Client and Control for Sonoff devices and Autoslide Doors
+Forward MQTT data to Ewelink API
 
 positional arguments:
-  {get_config,door_trigger,set_mode,set_option,send_command}
-    get_config          Print the device configuration.
-    door_trigger        Trigger Door
-    set_mode            Set Door mode
-    set_option          Set Door Options, enter: option value
-    send_command        Send any valid command, enter: command value
+  login                 Ewelink login (e-mail or phone number) (default: None)
+  password              Ewelink password (default: None)
 
 optional arguments:
   -h, --help            show this help message and exit
-  -ph PHONE, --phone PHONE
-                        ewelink phone number (used for login)
-  -em EMAIL, --email EMAIL
-                        ewelink email (used for login)
-  -cf CONFIG, --config CONFIG
-                        ewelink config file (used for all configurations)
-  -P E_PASSWORD, --e_password E_PASSWORD
-                        ewelink password (used for login)
-  -i IMEI, --imei IMEI  ewelink imei (used for login) - optional
-  -r REGION, --region REGION
-                        ewelink region (used for login) - default us
-  -d DEVICE, --device DEVICE
-                        Device id of target Device, can be index number, name
-                        or deviceid (default is 0)
-  -dp DELAY_PERSON, --delay_person DELAY_PERSON
-                        Delay in seconds for person trigger, default is same
-                        as Pet trigger
+  -r {us,cn,eu,as}, --region {us,cn,eu,as}
+                        Region (default: us)
+  -a APPID, --appid APPID
+                        AppID to use (default: 0)
+  -O, --oauth           Use Oauth2 login (vs v2 login) (default: False)
+  -t TOPIC, --topic TOPIC
+                        MQTT Topic to send commands to, (can use # and +) default: /ewelink_command/)
+  -T FEEDBACK, --feedback FEEDBACK
+                        Topic on broker to publish feedback to (default: /ewelink_status)
   -b BROKER, --broker BROKER
-                        mqtt broker to publish sensor data to. (default=None)
-  -p PORT, --port PORT  mqtt broker port (default=1883)
-  -u USER, --user USER  mqtt broker username. (default=None)
-  -pw PASSWORD, --password PASSWORD
-                        mqtt broker password. (default=None)
-  -pt PUB_TOPIC, --pub_topic PUB_TOPIC
-                        topic to publish ewelink data to.
-                        (default=/ewelink_status/)
-  -st SUB_TOPIC, --sub_topic SUB_TOPIC
-                        topic to publish ewelink commands to.
-                        (default=/ewelink_command/)
-  -l LOG, --log LOG     log file. (default=None)
+                        ipaddress of MQTT broker (default: None)
+  -p PORT, --port PORT  MQTT broker port number (default: 1883)
+  -U USER, --user USER  MQTT broker user name (default: None)
+  -P PASSWD, --passwd PASSWD
+                        MQTT broker password (default: None)
+  -poll POLL_INTERVAL, --poll_interval POLL_INTERVAL
+                        Polling interval (seconds) (0=off) (default: 0)
+  -pd [POLL_DEVICE [POLL_DEVICE ...]], --poll_device [POLL_DEVICE [POLL_DEVICE ...]]
+                        Poll deviceID (default: None)
+  -d DEVICE, --device DEVICE
+                        deviceID (default: 100050a4f3)
+  -dp DELAY_PERSON, --delay_person DELAY_PERSON
+                        Delay in seconds for person trigger (default: None)
+  -l LOG, --log LOG     path/name of log file (default: ./ewelink.log)
+  -J, --json_out        publish topics as json (vs individual topics) (default: False)
   -D, --debug           debug mode
-  -V, --version         show program's version number and exit
+  --version             Display version of this program
+
   ```
 
 ## Example
 Example command lines:
 ```
-./ewelink_server.py -em my-email@gmail.com -P my-password -b 192.168.1.119 -l ./sonoff.log -D
-./ewelink_server.py -em my-email@gmail.com -P my-password get_config
+./ewelink.py my-email@gmail.com my-password -b 192.168.1.119 -l ./sonoff.log -D
 ```
 You set up an account using the ewelink app. Add all your Sonoff devices to the ewelink account as the app described (this can be a PITA, as Sonoff devices can be hard to add).
 
-Now when you start `ewelink_server.py` with your account credentials and mqtt broker address, the devices values will be published to your mqtt broker, and you can send commands via mqtt messages.
-
-You can figure out which device id is which (it's in the ewelink app, or you can use `get_config`.
-
-If no broker address is given then a command is expected to be given (like `get_config`) - you have to supply one of these two options. See the examples above.
+Now when you start `ewelink.py` with your account credentials and mqtt broker address, the devices values will be published to your mqtt broker, and you can send commands via mqtt messages.
 
 ### Regions
-The two tested regions are `us` (default) and `eu`. Region can also be added to the `config.yaml` file **log_in** section, see the example file.
+The two tested regions are `us` (default) and `eu`.
 
 ## Devices
 Many standard devices are supported (built in). if you have an unsupported device, the default for a Basic switch is used.
@@ -204,7 +211,7 @@ class PowSwitch(Default):
     
     __version__ = '1.0'
 ```
-And this is the output from the server log after sending `get_config`:
+And this is typical output from the server log:
 ```
 [D 2020-04-06 15:35:07,262] (Main.EwelinkClient  ) Received data: {
   "apikey": "530203b6-cf2c-1246-894e-30851b00a6d8",
@@ -269,6 +276,3 @@ This will publish the following:
 To your mqtt server.
 
 See `ewelink_devices.py` to see the definition of all the devices. Do **NOT** change `Default` as that is the base class for all devices!
-
-## ToDo
-Working on jinja2 templates, but may switch to yaml. Not currently implemented.

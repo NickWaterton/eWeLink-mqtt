@@ -1,1 +1,3 @@
 __pycache_
+custom_components
+*.log

@@ -6,11 +6,7 @@ see https://github.com/hansharhoff/HASS-sonoff-ewelink for login sequence used
 see https://github.com/AlexxIT/SonoffLAN/blob/master/custom_components/sonoff/core/ewelink/cloud.py for new login sequence (10/7/22)
 also see https://coolkit-technologies.github.io/eWeLink-API/#/en/DeveloperGuideV2
 App ID and secret can be generated/renewed at https://dev.ewelink.cc/#/ when you login (dont forget region), you go to https://dev.ewelink.cc/#/console and click on "View" for your APP.
-N Waterton 11th Jan 2019 V1.0 First release
-N. Waterton 18th April 20201 V 1.2 Updated login method.
-N. Waterton 19th April 20201 V 1.2.1 Added region selector to constructor.
-N. Waterton 8th July 20202 V 1.2.2 Added retry on login failure, new appId and AppSecret added
-N. Waterton 13th July 20202 V 2.0.0 Complete re-write based on https://github.com/AlexxIT/SonoffLAN/blob/master/custom_components/sonoff/core/ewelink/cloud.py 
+N. Waterton 13th July 2022 V 2.0.0 Complete re-write based on https://github.com/AlexxIT/SonoffLAN/blob/master/custom_components/sonoff/core/ewelink/cloud.py 
 '''
 
 '''
@@ -179,20 +175,15 @@ Autoslide device:
 
 import json
 import asyncio
-import websockets
+#import websockets
 from aiohttp import ClientSession, ClientTimeout, ClientConnectorError, WSMessage, ClientWebSocketResponse
 import time
-import math
 import sys
-import random
-import uuid
-import string
 import hmac
 import hashlib
 import base64
 import collections
 import re
-import yaml
 from ewelink_devices import *
 import inspect
 import logging
