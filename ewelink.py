@@ -180,6 +180,10 @@ import json, time, sys, hmac, hashlib, base64, collections, re, inspect
 import asyncio
 from aiohttp import ClientSession, ClientTimeout, ClientConnectorError, WSMessage, ClientWebSocketResponse
 
+from get_components import check_setup
+#install custom_components if needed
+check_setup()
+
 from typing import Callable, Dict, List, Optional, TypedDict
 
 from custom_components.sonoff.core.ewelink.__init__ import XRegistry, SIGNAL_ADD_ENTITIES
@@ -776,6 +780,7 @@ def setuplogger(logger_name, log_file, level=logging.DEBUG, console=False):
     except Exception as e:
         print("Error in Logging setup: %s - do you have permission to write the log file??" % e)
         sys.exit(1)
+        
             
 if __name__ == "__main__":
     import argparse

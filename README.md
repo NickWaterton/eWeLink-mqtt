@@ -39,6 +39,20 @@ it's the feedback that seems to be the problem. Power cycling the door controlle
 Current F/W is 2.7 (with no updates for a year or so).
 
 ## Installatiion
+
+## Quick Install
+Clone this repository:
+```
+git clone https://github.com/NickWaterton/eWeLink-mqtt.git
+```
+cd to eWeLink-mqtt:
+```
+cd eWeLink-mqtt
+```
+The server can be run by running `./ewelink.py` now. The first time you run, the `custom_components` directory will be downloaded from https://github.com/AlexxIT/SonoffLAN/releases automatically.
+To update the `custom_components` directory, delete the `custom_components` directory, and the latest version will be downloaded again when you run `ewelink.py`.
+
+### Full Install
 Clone this repository:
 ```
 git clone https://github.com/NickWaterton/eWeLink-mqtt.git
