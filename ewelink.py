@@ -577,7 +577,7 @@ class EwelinkClient(MQTT, XRegistryCloud):
             params = {param:targetState}
                 
             self.log.debug('Setting param: {} to [{}] for device [{}]'.format(param, targetState, self.get_devicename(deviceid)))
-            waitResponse = True if deviceid == patio_door_device['deviceid'] else waitResponse
+            waitResponse = True if deviceid in [device['deviceid'] for device in self._custom_devices] else waitResponse
 
             payload = {'params':params, 'device':self.get_config(deviceid)}
             await self._send_request(payload, waitResponse)
