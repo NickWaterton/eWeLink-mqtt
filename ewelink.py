@@ -324,13 +324,15 @@ class EwelinkClient(MQTT, XRegistryCloud):
         Adds custom devices (eg patio Door device) if missing.
         Some appId/secret combinations only list Sonoff devices, but you can still access other devices
         '''
-        for custom_device in self._custom_devices:
+        for custom_device in self._custom_devices.copy():
             if custom_device['deviceid'] not in [device['deviceid'] for device in self._devices]:
                 self.log.info('Adding {} to _devices'.format(custom_device.get('name', 'unknown')))
                 self._devices.append(XDevice(custom_device))
                 self.log.info('Adding {} to polling task'.format(custom_device.get('name', 'unknown')))
                 self.set_initial_parameters(custom_device['deviceid'], poll=True)
                 self._start_polling(poll_interval)
+            else:
+                self._custom_devices.remove(custom_device)
                     
     def _start_polling(self, poll_interval):
         if 'poll_devices' in self._method_dict.keys():
