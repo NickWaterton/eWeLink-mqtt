@@ -25,6 +25,7 @@ ATTR_SUPPORTED_COLOR_MODES = "supported_color_mode"
 COLOR_MODE_BRIGHTNESS = None
 COLOR_MODE_COLOR_TEMP = None
 COLOR_MODE_RGB = None
+COLOR_MODE_ONOFF = None
 
 class LightEntity:
     pass
